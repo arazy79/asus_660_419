@@ -47,34 +47,11 @@ jobs:
           rm -rf kernel/out
           mkdir -p kernel/out
 
-      - name: Force disable SECCOMP_FILTER
-        working-directory: kernel
-        run: |
-          DEFCONFIG="arch/arm64/configs/asus/${{ github.event.inputs.defconfig }}"
-          echo "=== Before patch ==="
-          grep SECCOMP_FILTER "$DEFCONFIG" || true
-          # Hapus semua baris SECCOMP_FILTER
-          sed -i '/CONFIG_SECCOMP_FILTER/d' "$DEFCONFIG"
-          sed -i '/CONFIG_HAVE_ARCH_SECCOMP_FILTER/d' "$DEFCONFIG"
-          # Tambah disable explicit
-          echo "# CONFIG_SECCOMP_FILTER is not set" >> "$DEFCONFIG"
-          echo "# CONFIG_HAVE_ARCH_SECCOMP_FILTER is not set" >> "$DEFCONFIG"
-          echo "=== After patch ==="
-          grep SECCOMP_FILTER "$DEFCONFIG" || true
-
       - name: Make defconfig
         working-directory: kernel
         run: |
           cp arch/arm64/configs/asus/${{ github.event.inputs.defconfig }} out/.config
           yes "" | make ARCH=${{ env.ARCH }} O=out oldconfig
-
-      - name: Verify .config after oldconfig
-        working-directory: kernel
-        run: |
-          echo "=== SECCOMP in out/.config ==="
-          grep SECCOMP_FILTER out/.config || true
-          echo "=== Full SECCOMP ==="
-          grep SECCOMP out/.config || true
 
       - name: Build kernel
         working-directory: kernel
