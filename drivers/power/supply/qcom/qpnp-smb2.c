@@ -1360,6 +1360,9 @@ static int smb2_batt_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_DIE_HEALTH:
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
+    #ifdef CONFIG_MACH_ASUS_SDM660
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+	#endif
 		return 1;
 	default:
 		break;
