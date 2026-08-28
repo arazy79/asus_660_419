@@ -1,5 +1,4 @@
-name: Kernel Build X00TD 4.19 SKYWALKER
-
+name: Kernel Build X00TD 4.19 skywalker
 on:
   workflow_dispatch:
     inputs:
@@ -22,8 +21,8 @@ jobs:
       - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
-          repository: arazy79/android_kernel_asus_sdm660-4.19_skywalker
-          ref: r2/s
+          repository: arazy79/asus_660_419
+          ref: 13
           path: kernel
           submodules: recursive
 
