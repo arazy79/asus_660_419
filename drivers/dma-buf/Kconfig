@@ -1,0 +1,37 @@
+menu "DMABUF options"
+
+config SYNC_FILE
+	bool "Explicit Synchronization Framework"
+	default n
+	select DMA_SHARED_BUFFER
+	---help---
+	  ...
+
+config SW_SYNC
+	bool "Sync File Validation Framework"
+	default n
+	depends on SYNC_FILE
+	depends on DEBUG_FS
+	---help---
+	  ...
+
+config DEBUG_DMA_BUF_REF
+	bool "DEBUG Reference Count"
+	depends on STACKDEPOT
+	depends on DMA_SHARED_BUFFER
+	default n
+	help
+	  ...
+
+menuconfig DMABUF_HEAPS
+	bool "DMA-BUF Userland Memory Heaps"
+	select DMA_SHARED_BUFFER
+	help
+	  Choose this option to enable the DMA-BUF userland memory heaps.
+	  This options creates per heap chardevs in /dev/dma_heap/ which
+	  allows userspace to allocate dma-bufs that can be shared
+	  between drivers.
+
+source "drivers/dma-buf/heaps/Kconfig"
+
+endmenu
