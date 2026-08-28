@@ -30,7 +30,7 @@
 
 	gpubw: qcom,gpubw {
 		compatible = "qcom,devbw";
-		governor = "bw_vbif";
+		governor = "performance";
 		qcom,src-dst-ports = <26 512>;
 		operating-points-v2 = <&gpu_bw_tbl>;
 		/*
@@ -551,7 +551,7 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 
-				qcom,speed-bin = <90>;
+				qcom,speed-bin = <122>;
 
 				qcom,initial-pwrlevel = <2>;
 
@@ -605,7 +605,7 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 
-				qcom,speed-bin = <122>;
+				qcom,speed-bin = <90>;
 
 				qcom,initial-pwrlevel = <3>;
 
