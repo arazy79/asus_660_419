@@ -2627,6 +2627,13 @@ void *wmi_unified_attach(void *scn_handle,
 	wmi_handle->target_type = param->target_type;
 	soc->target_type = param->target_type;
 
+	/* Allocate ext2 service bitmap for A16 firmware SAP compatibility */
+    soc->wmi_ext2_service_bitmap = qdf_mem_malloc(
+    sizeof(uint32_t) * WMI_SERVICE_SEGMENT_SIZE);
+    if (soc->wmi_ext2_service_bitmap)
+    qdf_mem_zero(soc->wmi_ext2_service_bitmap,
+                 sizeof(uint32_t) * WMI_SERVICE_SEGMENT_SIZE);
+
 	if (param->target_type >= WMI_MAX_TARGET_TYPE)
 		goto error;
 
