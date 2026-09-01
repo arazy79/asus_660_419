@@ -10,13 +10,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     env:
+      TZ: Asia/Jakarta
       ARCH: arm64
       CC: clang
       CROSS_COMPILE: aarch64-linux-gnu-
       CROSS_COMPILE_ARM32: arm-linux-gnueabi-
-
+      CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
     steps:
       - name: Checkout kernel source
         uses: actions/checkout@v4
@@ -25,6 +25,16 @@ jobs:
           ref: 13
           path: kernel
           submodules: recursive
+
+      - name: Restore ccache & build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            kernel/out/.ccache
+            kernel/out
+          key: kernel-build-${{ github.run_id }}
+          restore-keys: |
+            kernel-build-
 
       - name: Install dependencies
         run: |
@@ -44,7 +54,6 @@ jobs:
 
       - name: Prepare output directory
         run: |
-          rm -rf kernel/out
           mkdir -p kernel/out
 
       - name: Make defconfig
@@ -56,6 +65,8 @@ jobs:
       - name: Build kernel
         working-directory: kernel
         run: |
+          export CC="ccache clang"
+          export CXX="ccache clang++"
           make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" KCFLAGS="-Wno-error" -j2
 
       - name: Build DTB + Image.gz-dtb
@@ -64,25 +75,20 @@ jobs:
           make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" dtbs
           echo "=== All DTB files ==="
           find out/arch/arm64/boot/dts -name "*.dtb" | sort
-          
           # Cari DTB untuk X00TD
           DTB=$(find out/arch/arm64/boot/dts -iname "*x00td*.dtb" | head -1)
-          
           # Kalau gak ada, coba sdm636.dtb
           if [ -z "$DTB" ]; then
             DTB=$(find out/arch/arm64/boot/dts -name "sdm636.dtb" | head -1)
           fi
-          
           # Kalau masih gak ada, coba sdm660.dtb
           if [ -z "$DTB" ]; then
             DTB=$(find out/arch/arm64/boot/dts -name "sdm660.dtb" | head -1)
           fi
-          
           if [ -z "$DTB" ]; then
             echo "ERROR: No DTB found! Build failed."
             exit 1
           fi
-          
           echo "Using DTB: $DTB"
           cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
           echo "=== Final size ==="
