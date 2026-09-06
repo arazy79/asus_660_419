@@ -18,8 +18,7 @@
 	ADCPWREN_PMI_GP1-gpios34 = <&tlmm 3 0x0>;
 	qcom,micro-usb;
 	qcom,fv-max-uv = <4350000>;
-	qcom,fcc-max-ua = <2300000>;
-	qcom,usb-icl-ua = <1000000>;
+	qcom,usb-icl-ua = <2300000>;
 	qcom,float-option = <1>;
 	qcom,auto-recharge-soc;
 };
