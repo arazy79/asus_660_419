@@ -1,0 +1,25 @@
+<b><#selectbg_g>Jan 1,2024</#></b>
+
+  <*> Bringup SkyWalker-サイセイ-Saisei</*>
+  <*> KernelSU: Sync & Upstream</*>
+  <*> KernelSU: Added Safe Mode</*>
+  <*> smb-lib: Refined Fast Charging Hack with Toggle</*>
+  <*> qpnp-smb2: Fixed some AICL Issue</*>
+  <*> Now, OC and Stock in 1 File</*>
+  <*> Removed Sultan's PID</*>
+  <*> devfreq: simple_gpu: Fix stuck on low GPU freq after adding more GPU STEPS!</*>
+  <*> sdfat: Update to Version 2.4.5</*>
+  <*> sdfat: Masquerade VFAT (Disable Main VFAT driver)</*>
+  <*> sdfat: Masquerade Tuxera's ExFAT (Fix ExFAT Issue on Stock ROM)</*>
+  <*> More Changes, see on GitHub Commits</*>
+
+
+
+<b><#selectbg_g>NOTES :</#></b>
+
+  <*> Make sure to plug out charger before switching fast charging with kernel manager / terminal</*>
+  <*> Recommended to use KernelSU Manager v0.7.1 and above</*>
+  <*> NFI still Better with Q FW.</*>
+  <*> If There is an internal problem with your device warning show , just click ok and ignore.</*>
+  <*> Kernel need sometimes to settle.</*>
+  <*> For better results , Tweak with Kernel Manager or use Spectrum.</*>
