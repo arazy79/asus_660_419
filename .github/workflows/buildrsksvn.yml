@@ -1,4 +1,4 @@
-name: Kernel Build 4.4 RSK7 — Final Fixed
+name: Kernel Build 4.4 RSK7 — KSU Fully Integrated
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +13,7 @@ on:
       defconfig:
         description: 'Defconfig'
         required: true
-        default: 'X00TD_defconfig'
+        default: 'X00TD_susfs_oc_defconfig'
 
 jobs:
   build:
@@ -40,19 +40,40 @@ jobs:
         run: |
           cd kernel
           git submodule update --init --force KernelSU
+          
           rm -rf drivers/kernelsu
           mkdir -p drivers
           ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
-          echo "✅ KernelSU siap"
+          
+          echo "✅ Symlink dibuat: KernelSU/kernel → drivers/kernelsu"
+          ls -la drivers/kernelsu/
+
+      - name: Pastikan KSU Masuk ke Build
+        working-directory: kernel
+        run: |
+          # Pastikan Kconfig menyertakan KSU
+          if ! grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig; then
+            echo "source \"drivers/kernelsu/Kconfig\"" >> drivers/Kconfig
+            echo "✅ Ditambahkan ke drivers/Kconfig"
+          fi
+          
+          # Pastikan Makefile menyertakan KSU
+          if ! grep -q "kernelsu" drivers/Makefile; then
+            echo "obj-\$(CONFIG_KSU) += kernelsu/" >> drivers/Makefile
+            echo "✅ Ditambahkan ke drivers/Makefile"
+          fi
+          
+          echo "=== Verifikasi ==="
+          grep "kernelsu" drivers/Kconfig
+          grep "kernelsu" drivers/Makefile
 
       - name: Perbaiki Focaltech Firmware Hilang
         working-directory: kernel
         run: |
-          if [ ! -f include/firmware/fw_sample.i ]; then
-            echo "⚠️ fw_sample.i tidak ditemukan — menonaktifkan referensi..."
-            sed -i 's|^#define FTS_UPGRADE_FW_FILE.*$|#define FTS_UPGRADE_FW_FILE ""|' \
-              drivers/input/touchscreen/focaltech_touch/focaltech_config.h
-            echo "✅ Focaltech diperbaiki"
+          FILE="drivers/input/touchscreen/focaltech_touch/focaltech_config.h"
+          if [ -f "$FILE" ]; then
+            sed -i 's|^#define FTS_UPGRADE_FW_FILE.*$|#define FTS_UPGRADE_FW_FILE ""|' "$FILE"
+            echo "✅ FTS diperbaiki"
           fi
 
       - name: Restore ccache
@@ -78,10 +99,9 @@ jobs:
         run: |
           make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
           
-          echo "=== STATUS KSU ==="
-          grep CONFIG_KSU out/.config || echo "⚠️ Cek KSU"
-          grep CONFIG_KSU_SUSFS out/.config || echo "⚠️ Cek KSU_SUSFS"
-          echo "Defconfig selesai ✅"
+          echo "=== STATUS ==="
+          grep CONFIG_KSU out/.config
+          grep CONFIG_KSU_SUSFS out/.config
 
       - name: Build Kernel
         working-directory: kernel
