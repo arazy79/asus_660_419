@@ -59,7 +59,7 @@ jobs:
       - name: Make defconfig
         working-directory: kernel
         run: |
-          cp arch/arm64/configs/asus/${{ github.event.inputs.defconfig }} out/.config
+          cp arch/arm64/configs/vendor/asus/${{ github.event.inputs.defconfig }} out/.config
           yes "" | make ARCH=${{ env.ARCH }} O=out oldconfig
 
       - name: Build kernel
