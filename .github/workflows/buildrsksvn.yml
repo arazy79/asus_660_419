@@ -1,8 +1,9 @@
 name: Kernel Build 4.4 RSK7
+on:
   workflow_dispatch:
     inputs:
       defconfig:
-        description: 'Defconfig path (relatif dari arch/arm64/configs/)'
+        description: 'Defconfig'
         required: true
         default: 'X00TD_defconfig'
 
@@ -12,95 +13,82 @@ jobs:
     env:
       TZ: Asia/Jakarta
       ARCH: arm64
-      CC: clang
+      CC: aarch64-linux-gnu-gcc    # ← Pakai GCC murni, gak campur Clang
       CROSS_COMPILE: aarch64-linux-gnu-
       CROSS_COMPILE_ARM32: arm-linux-gnueabi-
       CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
+
     steps:
-      - name: Checkout kernel source
+      - name: Checkout Kernel 4.4 — SUMBER BENAR
         uses: actions/checkout@v4
         with:
-          repository: arazy79/asus_660_419
-          ref: 13
+          repository: rusakseven/RSKSevenProject-X00TD  # ← UBAH KE SINI
+          ref: rsk-4.4-clean2                            # ← Branch bener
           path: kernel
-          submodules: recursive
+          fetch-depth: 1
+          submodules: recursive                         # ✅ KernelSU ikut
 
-      - name: Restore ccache & build cache
+      - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: |
             kernel/out/.ccache
             kernel/out
-          key: kernel-build-${{ github.run_id }}
+          key: rsk7-build-${{ github.run_id }}
           restore-keys: |
-            kernel-build-
+            rsk7-build-
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick libncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
-          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-          sudo apt-get install -y clang llvm lld
+          sudo apt-get install -y bc bison build-essential ccache curl flex \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi git libncurses-dev \
+            lib32z1-dev liblz4-tool zip zlib1g-dev lzop rsync
 
-      - name: Debug - Check files
+      - name: Cek File & KernelSU
         run: |
-          echo "=== Kernel directory contents ==="
           ls -la kernel/
-          echo "=== Defconfig exists? ==="
-          ls -la kernel/arch/arm64/configs/vendor/asus/${{ github.event.inputs.defconfig }} || echo "FILE NOT FOUND!"
-          echo "=== All defconfigs ==="
-          ls -la kernel/arch/arm64/configs/
+          echo "=== Cek KernelSU ==="
+          ls -la kernel/KernelSU* || echo "Cek submodule..."
+          echo "=== Cek Defconfig ==="
+          ls kernel/arch/arm64/configs/X00TD_defconfig || echo "Tidak ada!"
 
-      - name: Prepare output directory
-        run: |
-          mkdir -p kernel/out
+      - name: Prepare Output
+        run: mkdir -p kernel/out
 
-      - name: Make defconfig
+      - name: Make Defconfig — CARA BENAR
         working-directory: kernel
         run: |
-          cp arch/arm64/configs/vendor/asus/${{ github.event.inputs.defconfig }} out/.config
-          yes "" | make ARCH=${{ env.ARCH }} O=out oldconfig
+          make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
+          echo "✅ Defconfig selesai"
+          echo "=== KernelSU Status ==="
+          grep CONFIG_KSU out/.config || echo "⚠️ KernelSU TIDAK AKTIF!"
+          echo "=== SuSFS Status ==="
+          grep CONFIG_SUSFS out/.config || echo "⚠️ SuSFS TIDAK AKTIF!"
 
-      - name: Build kernel
+      - name: Build Kernel — GCC MURNI
         working-directory: kernel
         run: |
-          export CC="ccache clang"
-          export CXX="ccache clang++"
-          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" KCFLAGS="-Wno-error" -j2
+          export CC="ccache ${{ env.CC }}"
+          make ARCH=${{ env.ARCH }} O=out \
+            CROSS_COMPILE="${{ env.CROSS_COMPILE }}" \
+            CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" \
+            KCFLAGS="-Wno-error" \
+            -j$(nproc)
+          echo "✅ Build selesai!"
 
-      - name: Build DTB + Image.gz-dtb
+      - name: Gabung DTB → Image.gz-dtb
         working-directory: kernel
         run: |
-          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" dtbs
-          echo "=== All DTB files ==="
-          find out/arch/arm64/boot/dts -name "*.dtb" | sort
-          # Cari DTB untuk X00TD
-          DTB=$(find out/arch/arm64/boot/dts -iname "*x00td*.dtb" | head -1)
-          # Kalau gak ada, coba sdm636.dtb
-          if [ -z "$DTB" ]; then
-            DTB=$(find out/arch/arm64/boot/dts -name "sdm636.dtb" | head -1)
-          fi
-          # Kalau masih gak ada, coba sdm660.dtb
-          if [ -z "$DTB" ]; then
-            DTB=$(find out/arch/arm64/boot/dts -name "sdm660.dtb" | head -1)
-          fi
-          if [ -z "$DTB" ]; then
-            echo "ERROR: No DTB found! Build failed."
-            exit 1
-          fi
-          echo "Using DTB: $DTB"
+          make ARCH=${{ env.ARCH }} O=out dtbs
+          DTB=$(find out/arch/arm64/boot/dts -name "*x00td*.dtb" -o -name "sdm636.dtb" -o -name "sdm660.dtb" | head -1)
+          if [ -z "$DTB" ]; then echo "❌ DTB tidak ketemu"; exit 1; fi
           cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
-          echo "=== Final size ==="
-          ls -lh out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image.gz-dtb
+          ls -lh out/arch/arm64/boot/Image.gz-dtb
 
-      - name: Check build result
-        run: |
-          ls -la kernel/out/arch/arm64/boot/
-
-      - name: Upload Image.gz-dtb
+      - name: Upload Hasil
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Build-X00TD-SKYWALKER-4.19-${{ github.run_id }}
-          path: |
-            kernel/out/arch/arm64/boot/Image.gz-dtb
+          name: RSK7-X00TD-KSU-SUSFS-${{ github.run_id }}
+          path: kernel/out/arch/arm64/boot/Image.gz-dtb
