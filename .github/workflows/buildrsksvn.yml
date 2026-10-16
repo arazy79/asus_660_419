@@ -1,4 +1,4 @@
-name: Kernel Build 4.4 RSK7
+name: Kernel Build 4.4 RSK7 — Fixed
 on:
   workflow_dispatch:
     inputs:
@@ -13,20 +13,27 @@ jobs:
     env:
       TZ: Asia/Jakarta
       ARCH: arm64
-      CC: aarch64-linux-gnu-gcc    # ← Pakai GCC murni, gak campur Clang
+      CC: aarch64-linux-gnu-gcc
       CROSS_COMPILE: aarch64-linux-gnu-
       CROSS_COMPILE_ARM32: arm-linux-gnueabi-
       CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
 
     steps:
-      - name: Checkout Kernel 4.4 — SUMBER BENAR
+      - name: Checkout Kernel — Sumber Benar
         uses: actions/checkout@v4
         with:
-          repository: rusakseven/RSKSevenProject-X00TD  # ← UBAH KE SINI
-          ref: rsk-4.4-clean2                            # ← Branch bener
+          repository: rusakseven/RSKSevenProject-X00TD
+          ref: rsk-4.4-clean2
           path: kernel
           fetch-depth: 1
-          submodules: recursive                         # ✅ KernelSU ikut
+          submodules: false  # ← MATIKAN biar gak gagal
+
+      - name: Tarik KernelSU doang
+        run: |
+          cd kernel
+          git submodule update --init --force KernelSU
+          echo "✅ KernelSU siap"
+          ls -la KernelSU/
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -41,32 +48,19 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi git libncurses-dev \
+          sudo apt-get install -y bc bison build-essential ccache flex \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libncurses-dev \
             lib32z1-dev liblz4-tool zip zlib1g-dev lzop rsync
 
-      - name: Cek File & KernelSU
-        run: |
-          ls -la kernel/
-          echo "=== Cek KernelSU ==="
-          ls -la kernel/KernelSU* || echo "Cek submodule..."
-          echo "=== Cek Defconfig ==="
-          ls kernel/arch/arm64/configs/X00TD_defconfig || echo "Tidak ada!"
-
-      - name: Prepare Output
-        run: mkdir -p kernel/out
-
-      - name: Make Defconfig — CARA BENAR
+      - name: Make Defconfig
         working-directory: kernel
         run: |
           make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
-          echo "✅ Defconfig selesai"
-          echo "=== KernelSU Status ==="
-          grep CONFIG_KSU out/.config || echo "⚠️ KernelSU TIDAK AKTIF!"
-          echo "=== SuSFS Status ==="
-          grep CONFIG_SUSFS out/.config || echo "⚠️ SuSFS TIDAK AKTIF!"
+          echo "=== Status ==="
+          grep CONFIG_KSU out/.config || true
+          grep CONFIG_SUSFS out/.config || true
 
-      - name: Build Kernel — GCC MURNI
+      - name: Build Kernel
         working-directory: kernel
         run: |
           export CC="ccache ${{ env.CC }}"
@@ -75,7 +69,6 @@ jobs:
             CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" \
             KCFLAGS="-Wno-error" \
             -j$(nproc)
-          echo "✅ Build selesai!"
 
       - name: Gabung DTB → Image.gz-dtb
         working-directory: kernel
