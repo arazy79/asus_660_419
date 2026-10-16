@@ -1,4 +1,4 @@
-name: Kernel Build 4.4 RSK7 — Final
+name: Kernel Build 4.4 RSK7 — Final Fixed
 on:
   workflow_dispatch:
     inputs:
@@ -43,8 +43,17 @@ jobs:
           rm -rf drivers/kernelsu
           mkdir -p drivers
           ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
-          echo "✅ Symlink siap"
-          ls -la drivers/kernelsu/
+          echo "✅ KernelSU siap"
+
+      - name: Perbaiki Focaltech Firmware Hilang
+        working-directory: kernel
+        run: |
+          if [ ! -f include/firmware/fw_sample.i ]; then
+            echo "⚠️ fw_sample.i tidak ditemukan — menonaktifkan referensi..."
+            sed -i 's|^#define FTS_UPGRADE_FW_FILE.*$|#define FTS_UPGRADE_FW_FILE ""|' \
+              drivers/input/touchscreen/focaltech_touch/focaltech_config.h
+            echo "✅ Focaltech diperbaiki"
+          fi
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -70,10 +79,8 @@ jobs:
           make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
           
           echo "=== STATUS KSU ==="
-          grep CONFIG_KSU out/.config
-          
-          echo "=== STATUS SUSFS ==="
-          grep -i susfs out/.config || echo "⚠️ Cek nama konfig SuSFS — lihat daftar di atas"
+          grep CONFIG_KSU out/.config || echo "⚠️ Cek KSU"
+          grep CONFIG_KSU_SUSFS out/.config || echo "⚠️ Cek KSU_SUSFS"
           echo "Defconfig selesai ✅"
 
       - name: Build Kernel
