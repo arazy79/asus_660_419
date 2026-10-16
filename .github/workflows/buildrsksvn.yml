@@ -2,8 +2,16 @@ name: Kernel Build 4.4 RSK7 — KSU Fixed
 on:
   workflow_dispatch:
     inputs:
+      source_repo:
+        description: 'Repo Sumber (pemilik/nama)'
+        required: true
+        default: 'rusakseven/RSKSevenProject-X00TD'
+      source_branch:
+        description: 'Branch yang mau dikompilasi'
+        required: true
+        default: 'rsk-4.4-clean2'
       defconfig:
-        description: 'Defconfig'
+        description: 'Nama defconfig'
         required: true
         default: 'X00TD_defconfig'
 
@@ -19,27 +27,27 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
 
     steps:
-      - name: Checkout Kernel — Sumber Benar
+      - name: Checkout Kernel — Dari input
         uses: actions/checkout@v4
         with:
-          repository: rusakseven/RSKSevenProject-X00TD
-          ref: rsk-4.4-clean2
+          repository: ${{ inputs.source_repo }}
+          ref: ${{ inputs.source_branch }}
           path: kernel
           fetch-depth: 1
-          submodules: false  # ← Matikan, tarik manual di bawah
+          submodules: false
 
       - name: Tarik KernelSU + Buat Symlink
         run: |
           cd kernel
           git submodule update --init --force KernelSU
           
-          # Buat link yang hilang → drivers/kernelsu
+          # Buat link → drivers/kernelsu
           mkdir -p drivers
           ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
           
           echo "✅ KernelSU siap dipakai"
           ls -la drivers/kernelsu/
-          ls -la drivers/kernelsu/Kconfig || echo "⚠️ Cek Kconfig"
+          [ -f drivers/kernelsu/Kconfig ] && echo "✅ Kconfig ditemukan" || echo "⚠️ Kconfig TIDAK ditemukan"
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -47,8 +55,9 @@ jobs:
           path: |
             kernel/out/.ccache
             kernel/out
-          key: rsk7-build-${{ github.run_id }}
+          key: rsk7-build-${{ inputs.source_branch }}-${{ inputs.defconfig }}
           restore-keys: |
+            rsk7-build-${{ inputs.source_branch }}-
             rsk7-build-
 
       - name: Install Dependencies
@@ -61,6 +70,7 @@ jobs:
       - name: Make Defconfig
         working-directory: kernel
         run: |
+          echo "Menggunakan defconfig: ${{ inputs.defconfig }}"
           make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
           echo "=== Status KSU & SuSFS ==="
           grep CONFIG_KSU out/.config || echo "⚠️ KernelSU TIDAK AKTIF!"
@@ -82,6 +92,7 @@ jobs:
           make ARCH=${{ env.ARCH }} O=out dtbs
           DTB=$(find out/arch/arm64/boot/dts -name "*x00td*.dtb" -o -name "sdm636.dtb" -o -name "sdm660.dtb" | head -1)
           if [ -z "$DTB" ]; then echo "❌ DTB tidak ketemu"; exit 1; fi
+          echo "Menggabungkan dengan DTB: $DTB"
           cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
           ls -lh out/arch/arm64/boot/Image.gz-dtb
 
@@ -89,5 +100,5 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RSK7-X00TD-KSU-SUSFS-${{ github.run_id }}
+          name: RSK7-${{ inputs.defconfig }}-${{ github.run_id }}
           path: kernel/out/arch/arm64/boot/Image.gz-dtb
