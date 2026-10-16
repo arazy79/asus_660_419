@@ -14,8 +14,12 @@ on:
         description: 'Defconfig (nama file di arch/arm64/configs)'
         required: true
         default: 'X00TD_susfs_oc_defconfig'
+      ksu_dir:
+        description: 'Opsional: paksa folder KSU (contoh: KernelSU-Next-v320). Kosong = otomatis'
+        required: false
+        default: ''
       ksu_repo:
-        description: 'Opsional: repo KSU fallback (user/repo), kosongkan kalau submodule sudah ada'
+        description: 'Opsional: repo KSU fallback (user/repo) kalau tidak ada folder KSU valid'
         required: false
         default: ''
       ksu_branch:
@@ -53,63 +57,12 @@ jobs:
           if [ -f .gitmodules ]; then
             echo "=== .gitmodules ==="
             cat .gitmodules
-            git submodule update --init --recursive \
-              || echo "⚠️ submodule gagal, lanjut dulu"
+            echo "=== submodule update ==="
+            git submodule update --init --recursive 2>&1 | tee "$LOG_DIR/submodule.log" \
+              || echo "⚠️ submodule gagal (lihat pesan di atas)"
+            echo "=== submodule status ==="
+            git submodule status || true
           fi
-
-      - name: Siapkan KernelSU
-        working-directory: kernel
-        env:
-          KSU_REPO: ${{ inputs.ksu_repo }}
-          KSU_BRANCH: ${{ inputs.ksu_branch }}
-        run: |
-          echo "=== drivers/kernelsu sekarang ==="
-          ls -ld drivers/kernelsu 2>&1 || true
-          readlink drivers/kernelsu 2>&1 || true
-          echo "=== isi root repo ==="
-          ls
-          echo "=== .gitmodules ==="
-          cat .gitmodules 2>/dev/null || echo "(tidak ada .gitmodules)"
-
-          if [ -f drivers/kernelsu/Kconfig ]; then
-            echo "✅ drivers/kernelsu sudah valid"
-          else
-            echo "drivers/kernelsu/Kconfig belum ada, coba perbaiki"
-            FOUND=""
-            for d in KernelSU KernelSU-Next ksu; do
-              if [ -f "$d/kernel/Kconfig" ]; then
-                FOUND="$d"
-                break
-              fi
-            done
-
-            KSU_REPO="$(echo "$KSU_REPO" | xargs)"
-            KSU_BRANCH="$(echo "$KSU_BRANCH" | xargs)"
-            if [ -z "$FOUND" ] && [ -n "$KSU_REPO" ]; then
-              echo "Clone KSU fallback: $KSU_REPO ($KSU_BRANCH)"
-              rm -rf KernelSU
-              if [ -n "$KSU_BRANCH" ]; then
-                git clone --depth=1 --branch "$KSU_BRANCH" "https://github.com/$KSU_REPO" KernelSU
-              else
-                git clone --depth=1 "https://github.com/$KSU_REPO" KernelSU
-              fi
-              [ -f KernelSU/kernel/Kconfig ] && FOUND="KernelSU"
-            fi
-
-            if [ -z "$FOUND" ]; then
-              echo "❌ KernelSU tidak ketemu: tidak ada submodule/folder KSU di repo."
-              echo "   Isi input ksu_repo (+ ksu_branch) dengan fork KSU yang sudah ke-patch SuSFS."
-              exit 1
-            fi
-
-            rm -rf drivers/kernelsu
-            ln -sfn "../$FOUND/kernel" drivers/kernelsu
-            echo "✅ symlink: drivers/kernelsu -> ../$FOUND/kernel"
-          fi
-
-          ls -la drivers/kernelsu/ | head -20
-          echo "=== SuSFS di KSU/fs ==="
-          grep -rli susfs drivers/kernelsu/ fs/ 2>/dev/null | head -5 || echo "⚠️ tidak ada referensi susfs"
 
       - name: Cek Defconfig
         working-directory: kernel
@@ -130,6 +83,79 @@ jobs:
           fi
           echo "✅ Pakai: $CONFIG_DIR/$NAME"
           grep -E "CONFIG_KSU|CONFIG_KPROBES|CONFIG_HAVE_KPROBES|CONFIG_OVERLAY_FS|APPENDED_DTB" "$CONFIG_DIR/$NAME" || echo "⚠️ tidak ada entri KSU di defconfig ini"
+
+      - name: Siapkan KernelSU
+        working-directory: kernel
+        env:
+          KSU_DIR: ${{ inputs.ksu_dir }}
+          KSU_REPO: ${{ inputs.ksu_repo }}
+          KSU_BRANCH: ${{ inputs.ksu_branch }}
+        run: |
+          echo "=== Folder KSU yang ada di repo ==="
+          find . -maxdepth 2 -iname "kernelsu*" -not -path "./.git/*" -not -path "./out/*" | sort
+          for d in KernelSU KernelSU-Next-v320 KernelSU-Next-v111 KernelSU-Next ksu; do
+            if [ -d "$d" ]; then
+              echo "--- $d ---"
+              echo "isi:"; ls "$d" | head -15
+              echo "kernel/ :"; ls "$d/kernel" 2>/dev/null | head -15 || echo "(tidak ada kernel/)"
+            fi
+          done
+
+          echo "=== drivers/Kconfig & drivers/Makefile menyebut kernelsu? ==="
+          grep -n kernelsu drivers/Kconfig drivers/Makefile || echo "⚠️ tidak ada referensi kernelsu di drivers/Kconfig / drivers/Makefile"
+
+          NEED_SUSFS=0
+          grep -q "^CONFIG_KSU_SUSFS=y" "$CONFIG_DIR/$DEFCONFIG" && NEED_SUSFS=1
+          echo "Defconfig butuh SuSFS: $NEED_SUSFS"
+
+          CAND="$(echo "$KSU_DIR" | xargs)"
+          if [ -n "$CAND" ]; then
+            echo "Pakai folder paksaan: $CAND"
+            [ -f "$CAND/kernel/Kconfig" ] || { echo "❌ $CAND/kernel/Kconfig tidak ada"; exit 1; }
+          else
+            for d in KernelSU KernelSU-Next-v320 KernelSU-Next-v111 KernelSU-Next; do
+              [ -f "$d/kernel/Kconfig" ] || { echo "skip $d (tidak ada kernel/Kconfig)"; continue; }
+              if [ "$NEED_SUSFS" = 1 ] && ! grep -q "KSU_SUSFS" "$d/kernel/Kconfig"; then
+                echo "skip $d (Kconfig tanpa KSU_SUSFS)"
+                continue
+              fi
+              CAND="$d"
+              break
+            done
+          fi
+
+          KSU_REPO="$(echo "$KSU_REPO" | xargs)"
+          KSU_BRANCH="$(echo "$KSU_BRANCH" | xargs)"
+          if [ -z "$CAND" ] && [ -n "$KSU_REPO" ]; then
+            echo "Clone KSU fallback: $KSU_REPO ($KSU_BRANCH)"
+            rm -rf KernelSU-fallback
+            if [ -n "$KSU_BRANCH" ]; then
+              git clone --depth=1 --branch "$KSU_BRANCH" "https://github.com/$KSU_REPO" KernelSU-fallback
+            else
+              git clone --depth=1 "https://github.com/$KSU_REPO" KernelSU-fallback
+            fi
+            [ -f KernelSU-fallback/kernel/Kconfig ] && CAND="KernelSU-fallback"
+          fi
+
+          if [ -z "$CAND" ]; then
+            echo "❌ Tidak ada folder KSU yang valid (butuh kernel/Kconfig$( [ "$NEED_SUSFS" = 1 ] && echo ' dengan KSU_SUSFS'))."
+            echo "   Cek log submodule di step Clone, atau isi ksu_dir / ksu_repo."
+            exit 1
+          fi
+
+          rm -rf drivers/kernelsu
+          ln -sfn "../$CAND/kernel" drivers/kernelsu
+          echo "✅ drivers/kernelsu -> ../$CAND/kernel"
+          ls drivers/kernelsu | head -20
+
+          echo "=== Cek symbol yang dipakai defconfig ada di Kconfig KSU ==="
+          for s in $(grep -oE "^CONFIG_KSU[A-Z_]*" "$CONFIG_DIR/$DEFCONFIG" | sed 's/^CONFIG_//' | sort -u); do
+            if grep -q "config $s\$" drivers/kernelsu/Kconfig; then
+              echo "ok      $s"
+            else
+              echo "TIDAK ADA di Kconfig: $s"
+            fi
+          done
 
       - name: Install Dependencies
         run: |
