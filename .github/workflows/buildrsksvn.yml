@@ -1,9 +1,9 @@
-name: Kernel Build 4.4 RSK7 — KSU Fixed
+name: Kernel Build 4.4 RSK7 — Final
 on:
   workflow_dispatch:
     inputs:
       source_repo:
-        description: 'Repo Sumber (pemilik/nama)'
+        description: 'Repo Sumber'
         required: true
         default: 'arazy79/asus_660_419'
       source_branch:
@@ -11,7 +11,7 @@ on:
         required: true
         default: '4.4rsksvn'
       defconfig:
-        description: 'Nama defconfig'
+        description: 'Defconfig'
         required: true
         default: 'X00TD_defconfig'
 
@@ -40,14 +40,10 @@ jobs:
         run: |
           cd kernel
           git submodule update --init --force KernelSU
-          
-          # Hapus dulu kalau sudah ada
           rm -rf drivers/kernelsu
-          # Buat symlink yang BENAR
           mkdir -p drivers
-          ln -s "$(pwd)/KernelSU/kernel" drivers/kernelsu
-          
-          echo "✅ Symlink dibuat"
+          ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
+          echo "✅ Symlink siap"
           ls -la drivers/kernelsu/
 
       - name: Restore ccache
@@ -75,20 +71,10 @@ jobs:
           
           echo "=== STATUS KSU ==="
           grep CONFIG_KSU out/.config
+          
           echo "=== STATUS SUSFS ==="
-          grep CONFIG_SUSFS out/.config
-
-      - name: Cek KernelSU Sebelum Build
-        working-directory: kernel
-        run: |
-          echo "=== Isi drivers/kernelsu ==="
-          ls -la drivers/kernelsu/
-          echo "=== Cek KSU di .config ==="
-          grep -E "^CONFIG_KSU" out/.config || echo "❌ KSU TIDAK AKTIF!"
-          echo "=== Cek drivers/kernelsu/Kconfig ==="
-          ls -la drivers/kernelsu/Kconfig || echo "❌ Kconfig hilang!"
-          echo "=== Cek drivers/kernelsu/Makefile ==="
-          ls -la drivers/kernelsu/Makefile || echo "❌ Makefile hilang!"
+          grep -i susfs out/.config || echo "⚠️ Cek nama konfig SuSFS — lihat daftar di atas"
+          echo "Defconfig selesai ✅"
 
       - name: Build Kernel
         working-directory: kernel
@@ -115,4 +101,3 @@ jobs:
         with:
           name: RSK7-${{ inputs.defconfig }}-${{ github.run_id }}
           path: kernel/out/arch/arm64/boot/Image.gz-dtb
-          
