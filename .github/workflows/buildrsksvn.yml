@@ -13,18 +13,15 @@ on:
       defconfig:
         description: 'Defconfig'
         required: true
-        default: 'X00TD_susfs_oc_defconfig'  # ← Bisa ganti bebas
+        default: 'X00TD_susfs_oc_defconfig'
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       TZ: Asia/Jakarta
       ARCH: arm64
-      CC: aarch64-linux-gnu-gcc
-      CROSS_COMPILE: aarch64-linux-gnu-
-      CROSS_COMPILE_ARM32: arm-linux-gnueabi-
-      CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
+      CCACHE_DIR: /home/runner/.ccache
 
     steps:
       - name: Checkout Kernel
@@ -34,71 +31,99 @@ jobs:
           ref: ${{ inputs.source_branch }}
           path: kernel
           fetch-depth: 1
-          submodules: false
+          submodules: recursive
 
-      - name: Tarik KernelSU + Buat Symlink
+      - name: Install Dependencies
         run: |
-          cd kernel
-          git submodule update --init --force KernelSU
-          rm -rf drivers/kernelsu
-          mkdir -p drivers
-          ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
-          echo "✅ KernelSU siap"
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache flex \
+            libncurses-dev libssl-dev lib32z1-dev liblz4-tool zip \
+            zlib1g-dev lzop rsync binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabi
+
+      - name: Restore Toolchain Cache
+        id: tc-cache
+        uses: actions/cache@v4
+        with:
+          path: proton
+          key: proton-clang-v1
+
+      - name: Download Proton Clang
+        if: steps.tc-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang proton
+          proton/bin/clang --version | head -1
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.ccache
+          key: ccache-${{ inputs.source_branch }}-${{ inputs.defconfig }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ inputs.source_branch }}-${{ inputs.defconfig }}-
+            ccache-${{ inputs.source_branch }}-
+
+      - name: Cek KernelSU Bawaan Repo
+        working-directory: kernel
+        run: |
+          echo "=== drivers/kernelsu ==="
+          ls -la drivers | grep -i kernelsu || echo "⚠️ drivers/kernelsu tidak ada"
+          echo "=== SuSFS files ==="
+          grep -rli susfs drivers/kernelsu fs 2>/dev/null | head -5 || true
 
       - name: Perbaiki Focaltech Firmware Hilang
         working-directory: kernel
         run: |
           FILE="drivers/input/touchscreen/focaltech_touch/focaltech_config.h"
           if [ -f "$FILE" ]; then
-            echo "Memperbaiki FTS config..."
             sed -i 's|^#define FTS_UPGRADE_FW_FILE.*$|#define FTS_UPGRADE_FW_FILE ""|' "$FILE"
             echo "✅ FTS diperbaiki"
           fi
 
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: |
-            kernel/out/.ccache
-            kernel/out
-          key: rsk7-build-${{ inputs.source_branch }}-${{ inputs.defconfig }}
-          restore-keys: |
-            rsk7-build-${{ inputs.source_branch }}-
-            rsk7-build-
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libncurses-dev \
-            lib32z1-dev liblz4-tool zip zlib1g-dev lzop rsync
-
       - name: Make Defconfig
         working-directory: kernel
         run: |
-          make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
+          export PATH="$GITHUB_WORKSPACE/proton/bin:$PATH"
+          make ARCH=arm64 O=out \
+            CC="ccache clang" \
+            HOSTCC=gcc \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            ${{ inputs.defconfig }}
           echo "=== STATUS ==="
-          grep CONFIG_KSU out/.config || echo "⚠️ KSU tidak aktif"
-          grep CONFIG_KSU_SUSFS out/.config || echo "⚠️ SuSFS tidak aktif"
+          grep -E "CONFIG_KSU|CONFIG_KPROBES|CONFIG_HAVE_KPROBES|CONFIG_OVERLAY_FS|CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE" out/.config || echo "⚠️ config KSU tidak ketemu"
 
       - name: Build Kernel
         working-directory: kernel
         run: |
-          export CC="ccache ${{ env.CC }}"
-          make ARCH=${{ env.ARCH }} O=out \
-            CROSS_COMPILE="${{ env.CROSS_COMPILE }}" \
-            CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" \
+          export PATH="$GITHUB_WORKSPACE/proton/bin:$PATH"
+          ccache -M 3G
+          make ARCH=arm64 O=out \
+            CC="ccache clang" \
+            HOSTCC=gcc \
+            HOSTCFLAGS="-Wall -O2 -fomit-frame-pointer -std=gnu89 -fcommon" \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             KCFLAGS="-Wno-error" \
-            -j$(nproc)
+            -j$(nproc) 2>&1 | tee build.log
+          ccache -s
 
-      - name: Gabung DTB → Image.gz-dtb
+      - name: Siapkan Image.gz-dtb
         working-directory: kernel
         run: |
-          make ARCH=${{ env.ARCH }} O=out dtbs
-          DTB=$(find out/arch/arm64/boot/dts -name "*x00td*.dtb" -o -name "sdm636.dtb" -o -name "sdm660.dtb" | head -1)
-          if [ -z "$DTB" ]; then echo "❌ DTB tidak ketemu"; exit 1; fi
-          cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
-          ls -lh out/arch/arm64/boot/Image.gz-dtb
+          BOOT=out/arch/arm64/boot
+          if [ -f "$BOOT/Image.gz-dtb" ]; then
+            echo "✅ Image.gz-dtb dibuat oleh kernel"
+          else
+            echo "Image.gz-dtb tidak ada, gabung manual semua DTB"
+            [ -f "$BOOT/Image.gz" ] || { echo "❌ Image.gz tidak ada"; exit 1; }
+            DTBS=$(find $BOOT/dts -name "*.dtb" | sort)
+            [ -n "$DTBS" ] || { echo "❌ DTB tidak ketemu"; exit 1; }
+            cat $BOOT/Image.gz $DTBS > $BOOT/Image.gz-dtb
+          fi
+          ls -lh $BOOT/Image.gz-dtb
 
       - name: Upload Hasil
         if: success()
@@ -106,3 +131,10 @@ jobs:
         with:
           name: RSK7-${{ inputs.defconfig }}-${{ github.run_id }}
           path: kernel/out/arch/arm64/boot/Image.gz-dtb
+
+      - name: Upload Log Kalau Gagal
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_id }}
+          path: kernel/build.log
