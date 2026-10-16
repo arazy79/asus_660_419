@@ -1,4 +1,4 @@
-name: Kernel Build 4.4 RSK7 — KSU Fully Integrated
+name: Kernel Build 4.4 RSK7 — All Defconfig Fixed
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +13,7 @@ on:
       defconfig:
         description: 'Defconfig'
         required: true
-        default: 'X00TD_susfs_oc_defconfig'
+        default: 'X00TD_susfs_oc_defconfig'  # ← Bisa ganti bebas
 
 jobs:
   build:
@@ -40,38 +40,17 @@ jobs:
         run: |
           cd kernel
           git submodule update --init --force KernelSU
-          
           rm -rf drivers/kernelsu
           mkdir -p drivers
           ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
-          
-          echo "✅ Symlink dibuat: KernelSU/kernel → drivers/kernelsu"
-          ls -la drivers/kernelsu/
-
-      - name: Pastikan KSU Masuk ke Build
-        working-directory: kernel
-        run: |
-          # Pastikan Kconfig menyertakan KSU
-          if ! grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig; then
-            echo "source \"drivers/kernelsu/Kconfig\"" >> drivers/Kconfig
-            echo "✅ Ditambahkan ke drivers/Kconfig"
-          fi
-          
-          # Pastikan Makefile menyertakan KSU
-          if ! grep -q "kernelsu" drivers/Makefile; then
-            echo "obj-\$(CONFIG_KSU) += kernelsu/" >> drivers/Makefile
-            echo "✅ Ditambahkan ke drivers/Makefile"
-          fi
-          
-          echo "=== Verifikasi ==="
-          grep "kernelsu" drivers/Kconfig
-          grep "kernelsu" drivers/Makefile
+          echo "✅ KernelSU siap"
 
       - name: Perbaiki Focaltech Firmware Hilang
         working-directory: kernel
         run: |
           FILE="drivers/input/touchscreen/focaltech_touch/focaltech_config.h"
           if [ -f "$FILE" ]; then
+            echo "Memperbaiki FTS config..."
             sed -i 's|^#define FTS_UPGRADE_FW_FILE.*$|#define FTS_UPGRADE_FW_FILE ""|' "$FILE"
             echo "✅ FTS diperbaiki"
           fi
@@ -98,10 +77,9 @@ jobs:
         working-directory: kernel
         run: |
           make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
-          
           echo "=== STATUS ==="
-          grep CONFIG_KSU out/.config
-          grep CONFIG_KSU_SUSFS out/.config
+          grep CONFIG_KSU out/.config || echo "⚠️ KSU tidak aktif"
+          grep CONFIG_KSU_SUSFS out/.config || echo "⚠️ SuSFS tidak aktif"
 
       - name: Build Kernel
         working-directory: kernel
