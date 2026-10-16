@@ -1,140 +1,175 @@
-name: Kernel Build 4.4 RSK7 — All Defconfig Fixed
+name: Kernel Build X00TD 4.4 HMP MIUI
+
 on:
   workflow_dispatch:
     inputs:
-      source_repo:
-        description: 'Repo Sumber'
+      defconfig:
+        description: 'Nama file defconfig'
         required: true
-        default: 'arazy79/asus_660_419'
-      source_branch:
-        description: 'Branch'
+        default: 'X00TD_susfs_defconfig'
+      branch:
+        description: 'Branch repo'
         required: true
         default: '4.4rsksvn'
-      defconfig:
-        description: 'Defconfig'
+      ksu:
+        description: 'Enable KernelSU Next?'
         required: true
-        default: 'X00TD_susfs_oc_defconfig'
-
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+          
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
-      TZ: Asia/Jakarta
       ARCH: arm64
-      CCACHE_DIR: /home/runner/.ccache
-
+      CROSS_COMPILE: aarch64-linux-gnu-
+      CROSS_COMPILE_ARM32: arm-linux-gnueabi-
     steps:
-      - name: Checkout Kernel
+    
+      - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.source_repo }}
-          ref: ${{ inputs.source_branch }}
+          repository: ${{ github.repository_owner }}/kernel_4.4
+          ref: ${{ github.event.inputs.branch }}
           path: kernel
-          fetch-depth: 1
           submodules: recursive
-
-      - name: Install Dependencies
+          
+      - name: Apply KernelSU Next
+        if: ${{ github.event.inputs.ksu == 'true' }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex \
-            libncurses-dev libssl-dev lib32z1-dev liblz4-tool zip \
-            zlib1g-dev lzop rsync binutils-aarch64-linux-gnu \
-            binutils-arm-linux-gnueabi
-
-      - name: Restore Toolchain Cache
-        id: tc-cache
+          cd kernel
+          echo "Applying KernelSU Next v1.0.2..."
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/v1.0.2/kernel/setup.sh" | bash -s v1.0.2
+          
+          # Fix C99/C11 syntax untuk kernel 4.4 yang default C89
+          if [ -f drivers/kernelsu/Kbuild ]; then
+            echo 'ccflags-y += -std=gnu11' >> drivers/kernelsu/Kbuild
+          elif [ -f drivers/kernelsu/Makefile ]; then
+            echo 'ccflags-y += -std=gnu11' >> drivers/kernelsu/Makefile
+          fi
+          
+          # Fix MODULE_IMPORT_NS (kernel < 5.4)
+          sed -i '/MODULE_IMPORT_NS/d' drivers/kernelsu/ksu.c
+          
+          # Fix compiler_types.h (kernel < 4.18)
+          sed -i 's|#include <linux/compiler_types.h>|#include <linux/compiler.h>|' drivers/kernelsu/allowlist.c
+          
+          # Fix task_stack.h (kernel < 4.9)
+          find -L drivers/kernelsu -name "*.c" -exec sed -i '/#include <linux\/sched\/task_stack.h>/d' {} +
+          
+          # Fix full_name_hash signature (kernel < 4.17 = 2 args)
+          sed -i 's/full_name_hash(NULL, dirpath, strlen(dirpath))/full_name_hash((const unsigned char *)dirpath, strlen(dirpath))/' drivers/kernelsu/throne_tracker.c
+          
+          # Fix group_info->gid (kernel 4.4 pake blocks[], bukan gid[])
+          sed -i 's/group_info->gid\[i\]/group_info->blocks[i]/' drivers/kernelsu/core_hook.c
+          
+          # Fix security_add_hooks (kernel 4.4 = 2 args, bukan 3 args)
+          sed -i 's/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu")/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks))/' drivers/kernelsu/core_hook.c
+          
+          echo "KSU Next applied."
+          ls -la drivers/kernelsu/ || echo "WARNING: drivers/kernelsu/ not found!"
+          
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: proton
-          key: proton-clang-v1
-
-      - name: Download Proton Clang
-        if: steps.tc-cache.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang proton
-          proton/bin/clang --version | head -1
-
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.ccache
-          key: ccache-${{ inputs.source_branch }}-${{ inputs.defconfig }}-${{ github.run_id }}
+          path: ~/.ccache
+          key: ccache-${{ github.event.inputs.branch }}-${{ github.event.inputs.defconfig }}-${{ github.run_id }}
           restore-keys: |
-            ccache-${{ inputs.source_branch }}-${{ inputs.defconfig }}-
-            ccache-${{ inputs.source_branch }}-
-
-      - name: Cek KernelSU Bawaan Repo
+            ccache-${{ github.event.inputs.branch }}-${{ github.event.inputs.defconfig }}-
+            ccache-${{ github.event.inputs.branch }}-
+            
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ccache flex git \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            libncurses-dev libssl-dev
+            
+      - name: Configure ccache
+        run: |
+          ccache --max-size=2G
+          ccache --zero-stats
+          
+      - name: Debug check defconfig
+        run: |
+          echo "Branch: ${{ github.event.inputs.branch }}"
+          echo "Defconfig: ${{ github.event.inputs.defconfig }}"
+          echo "KSU: ${{ github.event.inputs.ksu }}"
+          FOUND=$(find kernel/arch/arm64/configs -name "${{ github.event.inputs.defconfig }}" | head -1)
+          [ -n "$FOUND" ] && echo "FOUND: $FOUND" || echo "NOT FOUND"
+          
+      - name: Make defconfig
         working-directory: kernel
         run: |
-          echo "=== drivers/kernelsu ==="
-          ls -la drivers | grep -i kernelsu || echo "⚠️ drivers/kernelsu tidak ada"
-          echo "=== SuSFS files ==="
-          grep -rli susfs drivers/kernelsu fs 2>/dev/null | head -5 || true
-
-      - name: Perbaiki Focaltech Firmware Hilang
+          DEFCONFIG_NAME="${{ github.event.inputs.defconfig }}"
+          DEFCONFIG_PATH=$(find arch/arm64/configs -name "$DEFCONFIG_NAME" | head -1)
+          [ -z "$DEFCONFIG_PATH" ] && { echo "ERROR: $DEFCONFIG_NAME not found"; exit 1; }
+          DEFCONFIG_REL="${DEFCONFIG_PATH#arch/arm64/configs/}"
+          make -j$(nproc) \
+            ARCH=arm64 \
+            O=out \
+            CC="ccache aarch64-linux-gnu-gcc" \
+            CROSS_COMPILE=$CROSS_COMPILE \
+            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
+            KCFLAGS="-Wno-error=enum-int-mismatch -Wno-error=incompatible-pointer-types" \
+            "$DEFCONFIG_REL"
+            
+      - name: Build kernel
         working-directory: kernel
         run: |
-          FILE="drivers/input/touchscreen/focaltech_touch/focaltech_config.h"
-          if [ -f "$FILE" ]; then
-            sed -i 's|^#define FTS_UPGRADE_FW_FILE.*$|#define FTS_UPGRADE_FW_FILE ""|' "$FILE"
-            echo "✅ FTS diperbaiki"
-          fi
-
-      - name: Make Defconfig
+          make -j$(nproc) \
+            ARCH=arm64 \
+            O=out \
+            CC="ccache aarch64-linux-gnu-gcc" \
+            CROSS_COMPILE=$CROSS_COMPILE \
+            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
+            KCFLAGS="-Wno-error=enum-int-mismatch -Wno-error=incompatible-pointer-types" \
+            Image.gz dtbs
+            
+      - name: Pack Image.gz-dtb
         working-directory: kernel
         run: |
-          export PATH="$GITHUB_WORKSPACE/proton/bin:$PATH"
-          make ARCH=arm64 O=out \
-            CC="ccache clang" \
-            HOSTCC=gcc \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            ${{ inputs.defconfig }}
-          echo "=== STATUS ==="
-          grep -E "CONFIG_KSU|CONFIG_KPROBES|CONFIG_HAVE_KPROBES|CONFIG_OVERLAY_FS|CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE" out/.config || echo "⚠️ config KSU tidak ketemu"
-
-      - name: Build Kernel
-        working-directory: kernel
-        run: |
-          export PATH="$GITHUB_WORKSPACE/proton/bin:$PATH"
-          ccache -M 3G
-          make ARCH=arm64 O=out \
-            CC="ccache clang" \
-            HOSTCC=gcc \
-            HOSTCFLAGS="-Wall -O2 -fomit-frame-pointer -std=gnu89 -fcommon" \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error" \
-            -j$(nproc) 2>&1 | tee build.log
-          ccache -s
-
-      - name: Siapkan Image.gz-dtb
-        working-directory: kernel
-        run: |
-          BOOT=out/arch/arm64/boot
-          if [ -f "$BOOT/Image.gz-dtb" ]; then
-            echo "✅ Image.gz-dtb dibuat oleh kernel"
+          DTB_PATH=""
+          for pattern in "sdm636" "sdm660"; do
+            FOUND=$(find out/arch/arm64/boot/dts -name "${pattern}*.dtb" | sort | head -1)
+            if [ -n "$FOUND" ]; then
+              DTB_PATH="$FOUND"
+              echo "DTB selected: $DTB_PATH"
+              break
+            fi
+          done
+          if [ -n "$DTB_PATH" ]; then
+            [ ! -f out/arch/arm64/boot/Image.gz ] && { echo "ERROR: Image.gz missing"; exit 1; }
+            cat out/arch/arm64/boot/Image.gz "$DTB_PATH" > out/arch/arm64/boot/Image.gz-dtb
+            ls -lh out/arch/arm64/boot/Image.gz-dtb
           else
-            echo "Image.gz-dtb tidak ada, gabung manual semua DTB"
-            [ -f "$BOOT/Image.gz" ] || { echo "❌ Image.gz tidak ada"; exit 1; }
-            DTBS=$(find $BOOT/dts -name "*.dtb" | sort)
-            [ -n "$DTBS" ] || { echo "❌ DTB tidak ketemu"; exit 1; }
-            cat $BOOT/Image.gz $DTBS > $BOOT/Image.gz-dtb
+            echo "ERROR: No sdm636/sdm660 DTB found"
+            exit 1
           fi
-          ls -lh $BOOT/Image.gz-dtb
-
-      - name: Upload Hasil
-        if: success()
+          
+      - name: Build summary
+        if: always()
+        run: |
+          echo "=== KSU Status ==="
+          [ "${{ github.event.inputs.ksu }}" = "true" ] \
+            && echo "KernelSU Next: ENABLED" \
+            || echo "KernelSU Next: DISABLED"
+          echo ""
+          echo "=== Boot files ==="
+          ls -lh kernel/out/arch/arm64/boot/ 2>/dev/null || echo "(empty)"
+          echo ""
+          echo "=== ccache stats ==="
+          ccache --show-stats 2>/dev/null || echo "ccache not available in PATH"
+          
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RSK7-${{ inputs.defconfig }}-${{ github.run_id }}
+          name: kernel-4.4-HMP-MIUI-KSU${{ github.event.inputs.ksu }}-${{ github.run_id }}
           path: kernel/out/arch/arm64/boot/Image.gz-dtb
-
-      - name: Upload Log Kalau Gagal
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log-${{ github.run_id }}
-          path: kernel/build.log
+          if-no-files-found: warn
