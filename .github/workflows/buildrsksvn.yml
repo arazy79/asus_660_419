@@ -5,11 +5,11 @@ on:
       source_repo:
         description: 'Repo Sumber (pemilik/nama)'
         required: true
-        default: 'rusakseven/RSKSevenProject-X00TD'
+        default: 'arazy79/asus_660_419'
       source_branch:
-        description: 'Branch yang mau dikompilasi'
+        description: 'Branch'
         required: true
-        default: 'rsk-4.4-clean2'
+        default: '4.4rsksvn'
       defconfig:
         description: 'Nama defconfig'
         required: true
@@ -27,7 +27,7 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
 
     steps:
-      - name: Checkout Kernel — Dari input
+      - name: Checkout Kernel
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.source_repo }}
@@ -41,13 +41,14 @@ jobs:
           cd kernel
           git submodule update --init --force KernelSU
           
-          # Buat link → drivers/kernelsu
+          # Hapus dulu kalau sudah ada
+          rm -rf drivers/kernelsu
+          # Buat symlink yang BENAR
           mkdir -p drivers
-          ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
+          ln -s "$(pwd)/KernelSU/kernel" drivers/kernelsu
           
-          echo "✅ KernelSU siap dipakai"
+          echo "✅ Symlink dibuat"
           ls -la drivers/kernelsu/
-          [ -f drivers/kernelsu/Kconfig ] && echo "✅ Kconfig ditemukan" || echo "⚠️ Kconfig TIDAK ditemukan"
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -70,11 +71,24 @@ jobs:
       - name: Make Defconfig
         working-directory: kernel
         run: |
-          echo "Menggunakan defconfig: ${{ inputs.defconfig }}"
           make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
-          echo "=== Status KSU & SuSFS ==="
-          grep CONFIG_KSU out/.config || echo "⚠️ KernelSU TIDAK AKTIF!"
-          grep CONFIG_SUSFS out/.config || echo "⚠️ SuSFS TIDAK AKTIF!"
+          
+          echo "=== STATUS KSU ==="
+          grep CONFIG_KSU out/.config
+          echo "=== STATUS SUSFS ==="
+          grep CONFIG_SUSFS out/.config
+
+      - name: Cek KernelSU Sebelum Build
+        working-directory: kernel
+        run: |
+          echo "=== Isi drivers/kernelsu ==="
+          ls -la drivers/kernelsu/
+          echo "=== Cek KSU di .config ==="
+          grep -E "^CONFIG_KSU" out/.config || echo "❌ KSU TIDAK AKTIF!"
+          echo "=== Cek drivers/kernelsu/Kconfig ==="
+          ls -la drivers/kernelsu/Kconfig || echo "❌ Kconfig hilang!"
+          echo "=== Cek drivers/kernelsu/Makefile ==="
+          ls -la drivers/kernelsu/Makefile || echo "❌ Makefile hilang!"
 
       - name: Build Kernel
         working-directory: kernel
@@ -92,7 +106,6 @@ jobs:
           make ARCH=${{ env.ARCH }} O=out dtbs
           DTB=$(find out/arch/arm64/boot/dts -name "*x00td*.dtb" -o -name "sdm636.dtb" -o -name "sdm660.dtb" | head -1)
           if [ -z "$DTB" ]; then echo "❌ DTB tidak ketemu"; exit 1; fi
-          echo "Menggabungkan dengan DTB: $DTB"
           cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
           ls -lh out/arch/arm64/boot/Image.gz-dtb
 
@@ -102,3 +115,4 @@ jobs:
         with:
           name: RSK7-${{ inputs.defconfig }}-${{ github.run_id }}
           path: kernel/out/arch/arm64/boot/Image.gz-dtb
+          
