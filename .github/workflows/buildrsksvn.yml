@@ -11,7 +11,7 @@ on:
         required: true
         default: '4.4rsksvn'
       defconfig:
-        description: 'Defconfig'
+        description: 'Defconfig (nama file di arch/arm64/configs)'
         required: true
         default: 'X00TD_susfs_oc_defconfig'
 
@@ -22,6 +22,7 @@ jobs:
       TZ: Asia/Jakarta
       ARCH: arm64
       CCACHE_DIR: /home/runner/.ccache
+      CONFIG_DIR: arch/arm64/configs
 
     steps:
       - name: Clone Kernel
@@ -43,6 +44,27 @@ jobs:
             git submodule update --init --recursive --depth=1 \
               || echo "⚠️ submodule gagal, lanjut dulu"
           fi
+
+      - name: Cek Defconfig
+        working-directory: kernel
+        env:
+          INPUT_DEFCONFIG: ${{ inputs.defconfig }}
+        run: |
+          NAME="$(echo "$INPUT_DEFCONFIG" | xargs)"
+          NAME="${NAME#arch/arm64/configs/}"
+          NAME="${NAME#./}"
+          echo "DEFCONFIG=$NAME" >> "$GITHUB_ENV"
+
+          echo "=== Defconfig terkait di $CONFIG_DIR ==="
+          ls "$CONFIG_DIR" | grep -iE "x00td|susfs|ksu" || echo "(tidak ada yang cocok)"
+
+          if [ ! -f "$CONFIG_DIR/$NAME" ]; then
+            echo "❌ $CONFIG_DIR/$NAME tidak ditemukan"
+            exit 1
+          fi
+          echo "✅ Pakai: $CONFIG_DIR/$NAME"
+          echo "=== Isi KSU/kprobes di defconfig ==="
+          grep -E "CONFIG_KSU|CONFIG_KPROBES|CONFIG_HAVE_KPROBES|CONFIG_OVERLAY_FS|APPENDED_DTB" "$CONFIG_DIR/$NAME" || echo "⚠️ tidak ada entri KSU di defconfig ini"
 
       - name: Install Dependencies
         run: |
@@ -81,9 +103,6 @@ jobs:
           ls -la drivers | grep -i kernelsu || echo "⚠️ drivers/kernelsu tidak ada"
           echo "=== SuSFS files ==="
           grep -rli susfs drivers/kernelsu fs 2>/dev/null | head -5 || true
-          echo "=== defconfig tersedia ==="
-          ls arch/arm64/configs | grep -i "${{ inputs.defconfig }}" \
-            || { echo "❌ defconfig tidak ditemukan"; ls arch/arm64/configs | grep -i x00td; exit 1; }
 
       - name: Perbaiki Focaltech Firmware Hilang
         working-directory: kernel
@@ -104,8 +123,8 @@ jobs:
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            ${{ inputs.defconfig }}
-          echo "=== STATUS ==="
+            "$DEFCONFIG"
+          echo "=== STATUS .config hasil ==="
           grep -E "CONFIG_KSU|CONFIG_KPROBES|CONFIG_HAVE_KPROBES|CONFIG_OVERLAY_FS|CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE" out/.config || echo "⚠️ config KSU tidak ketemu"
 
       - name: Build Kernel
