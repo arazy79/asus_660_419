@@ -1,4 +1,4 @@
-name: Kernel Build 4.4 RSK7 — Fixed
+name: Kernel Build 4.4 RSK7 — KSU Fixed
 on:
   workflow_dispatch:
     inputs:
@@ -26,14 +26,20 @@ jobs:
           ref: rsk-4.4-clean2
           path: kernel
           fetch-depth: 1
-          submodules: false  # ← MATIKAN biar gak gagal
+          submodules: false  # ← Matikan, tarik manual di bawah
 
-      - name: Tarik KernelSU doang
+      - name: Tarik KernelSU + Buat Symlink
         run: |
           cd kernel
           git submodule update --init --force KernelSU
-          echo "✅ KernelSU siap"
-          ls -la KernelSU/
+          
+          # Buat link yang hilang → drivers/kernelsu
+          mkdir -p drivers
+          ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
+          
+          echo "✅ KernelSU siap dipakai"
+          ls -la drivers/kernelsu/
+          ls -la drivers/kernelsu/Kconfig || echo "⚠️ Cek Kconfig"
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -56,9 +62,9 @@ jobs:
         working-directory: kernel
         run: |
           make ARCH=${{ env.ARCH }} O=out ${{ inputs.defconfig }}
-          echo "=== Status ==="
-          grep CONFIG_KSU out/.config || true
-          grep CONFIG_SUSFS out/.config || true
+          echo "=== Status KSU & SuSFS ==="
+          grep CONFIG_KSU out/.config || echo "⚠️ KernelSU TIDAK AKTIF!"
+          grep CONFIG_SUSFS out/.config || echo "⚠️ SuSFS TIDAK AKTIF!"
 
       - name: Build Kernel
         working-directory: kernel
