@@ -5,18 +5,20 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # PENTING: izin push
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Hapus KernelSU symlink & sisa lama
+      - name: Hapus folder KernelSU & sisa lama
         run: |
           set -e
           echo "=== Cek apa yang ada ==="
-          ls -ld KernelSU || true
+          ls -ld KernelSU
           
-          echo "=== Hapus symlink/folder ==="
-          rm -f KernelSU  # hapus symlink, aman gak ikut hapus folder asli
+          echo "=== Hapus folder KernelSU ==="
+          rm -rf KernelSU
           
           echo "=== Bersihkan Makefile ==="
           sed -i '/kernelsu/d' drivers/Makefile 2>/dev/null || true
@@ -26,6 +28,7 @@ jobs:
           
           echo "=== Status perubahan ==="
           git status
+          git diff
 
       - name: Commit & Push
         run: |
@@ -33,8 +36,9 @@ jobs:
           git config user.email "actions@github.com"
           git add -A
           if git diff --staged --quiet; then
-            echo "Tidak ada perubahan — sudah bersih"
+            echo "✅ Tidak ada perubahan — sudah bersih"
           else
-            git commit -m "Cleanup: hapus KernelSU symlink & sisa lama"
+            git commit -m "Cleanup: hapus folder KernelSU & sisa lama"
             git push
+            echo "✅ Berhasil di-push!"
           fi
