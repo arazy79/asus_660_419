@@ -14,6 +14,14 @@ on:
         description: 'Defconfig (nama file di arch/arm64/configs)'
         required: true
         default: 'X00TD_susfs_oc_defconfig'
+      ksu_repo:
+        description: 'Opsional: repo KSU fallback (user/repo), kosongkan kalau submodule sudah ada'
+        required: false
+        default: ''
+      ksu_branch:
+        description: 'Opsional: branch KSU fallback'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -23,8 +31,12 @@ jobs:
       ARCH: arm64
       CCACHE_DIR: /home/runner/.ccache
       CONFIG_DIR: arch/arm64/configs
+      LOG_DIR: /home/runner/work/logs
 
     steps:
+      - name: Siapkan Folder Log
+        run: mkdir -p "$LOG_DIR"
+
       - name: Clone Kernel
         env:
           REPO: ${{ inputs.source_repo }}
@@ -41,9 +53,63 @@ jobs:
           if [ -f .gitmodules ]; then
             echo "=== .gitmodules ==="
             cat .gitmodules
-            git submodule update --init --recursive --depth=1 \
+            git submodule update --init --recursive \
               || echo "⚠️ submodule gagal, lanjut dulu"
           fi
+
+      - name: Siapkan KernelSU
+        working-directory: kernel
+        env:
+          KSU_REPO: ${{ inputs.ksu_repo }}
+          KSU_BRANCH: ${{ inputs.ksu_branch }}
+        run: |
+          echo "=== drivers/kernelsu sekarang ==="
+          ls -ld drivers/kernelsu 2>&1 || true
+          readlink drivers/kernelsu 2>&1 || true
+          echo "=== isi root repo ==="
+          ls
+          echo "=== .gitmodules ==="
+          cat .gitmodules 2>/dev/null || echo "(tidak ada .gitmodules)"
+
+          if [ -f drivers/kernelsu/Kconfig ]; then
+            echo "✅ drivers/kernelsu sudah valid"
+          else
+            echo "drivers/kernelsu/Kconfig belum ada, coba perbaiki"
+            FOUND=""
+            for d in KernelSU KernelSU-Next ksu; do
+              if [ -f "$d/kernel/Kconfig" ]; then
+                FOUND="$d"
+                break
+              fi
+            done
+
+            KSU_REPO="$(echo "$KSU_REPO" | xargs)"
+            KSU_BRANCH="$(echo "$KSU_BRANCH" | xargs)"
+            if [ -z "$FOUND" ] && [ -n "$KSU_REPO" ]; then
+              echo "Clone KSU fallback: $KSU_REPO ($KSU_BRANCH)"
+              rm -rf KernelSU
+              if [ -n "$KSU_BRANCH" ]; then
+                git clone --depth=1 --branch "$KSU_BRANCH" "https://github.com/$KSU_REPO" KernelSU
+              else
+                git clone --depth=1 "https://github.com/$KSU_REPO" KernelSU
+              fi
+              [ -f KernelSU/kernel/Kconfig ] && FOUND="KernelSU"
+            fi
+
+            if [ -z "$FOUND" ]; then
+              echo "❌ KernelSU tidak ketemu: tidak ada submodule/folder KSU di repo."
+              echo "   Isi input ksu_repo (+ ksu_branch) dengan fork KSU yang sudah ke-patch SuSFS."
+              exit 1
+            fi
+
+            rm -rf drivers/kernelsu
+            ln -sfn "../$FOUND/kernel" drivers/kernelsu
+            echo "✅ symlink: drivers/kernelsu -> ../$FOUND/kernel"
+          fi
+
+          ls -la drivers/kernelsu/ | head -20
+          echo "=== SuSFS di KSU/fs ==="
+          grep -rli susfs drivers/kernelsu/ fs/ 2>/dev/null | head -5 || echo "⚠️ tidak ada referensi susfs"
 
       - name: Cek Defconfig
         working-directory: kernel
@@ -63,7 +129,6 @@ jobs:
             exit 1
           fi
           echo "✅ Pakai: $CONFIG_DIR/$NAME"
-          echo "=== Isi KSU/kprobes di defconfig ==="
           grep -E "CONFIG_KSU|CONFIG_KPROBES|CONFIG_HAVE_KPROBES|CONFIG_OVERLAY_FS|APPENDED_DTB" "$CONFIG_DIR/$NAME" || echo "⚠️ tidak ada entri KSU di defconfig ini"
 
       - name: Install Dependencies
@@ -96,14 +161,6 @@ jobs:
             ccache-${{ inputs.source_branch }}-${{ inputs.defconfig }}-
             ccache-${{ inputs.source_branch }}-
 
-      - name: Cek KernelSU Bawaan Repo
-        working-directory: kernel
-        run: |
-          echo "=== drivers/kernelsu ==="
-          ls -la drivers | grep -i kernelsu || echo "⚠️ drivers/kernelsu tidak ada"
-          echo "=== SuSFS files ==="
-          grep -rli susfs drivers/kernelsu fs 2>/dev/null | head -5 || true
-
       - name: Perbaiki Focaltech Firmware Hilang
         working-directory: kernel
         run: |
@@ -117,13 +174,14 @@ jobs:
         working-directory: kernel
         run: |
           export PATH="$GITHUB_WORKSPACE/proton/bin:$PATH"
+          set -o pipefail
           make ARCH=arm64 O=out \
             CC="ccache clang" \
             HOSTCC=gcc \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            "$DEFCONFIG"
+            "$DEFCONFIG" 2>&1 | tee "$LOG_DIR/defconfig.log"
           echo "=== STATUS .config hasil ==="
           grep -E "CONFIG_KSU|CONFIG_KPROBES|CONFIG_HAVE_KPROBES|CONFIG_OVERLAY_FS|CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE" out/.config || echo "⚠️ config KSU tidak ketemu"
 
@@ -141,7 +199,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             KCFLAGS="-Wno-error" \
-            -j$(nproc) 2>&1 | tee build.log
+            -j$(nproc) 2>&1 | tee "$LOG_DIR/build.log"
           ccache -s
 
       - name: Siapkan Image.gz-dtb
@@ -166,9 +224,10 @@ jobs:
           name: RSK7-${{ inputs.defconfig }}-${{ github.run_id }}
           path: kernel/out/arch/arm64/boot/Image.gz-dtb
 
-      - name: Upload Log Kalau Gagal
-        if: failure()
+      - name: Upload Log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-${{ github.run_id }}
-          path: kernel/build.log
+          name: logs-${{ github.run_id }}
+          path: /home/runner/work/logs
+          if-no-files-found: ignore
