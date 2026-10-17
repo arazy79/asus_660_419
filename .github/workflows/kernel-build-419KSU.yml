@@ -1,4 +1,4 @@
-name: Kernel Build X00TD 4.19 skywalker
+name: Kernel Build X00TD 4.19 skywalker KSU
 on:
   workflow_dispatch:
     inputs:
