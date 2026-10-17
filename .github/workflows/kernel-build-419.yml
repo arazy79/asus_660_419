@@ -85,7 +85,7 @@ jobs:
         run: |
           export CC="ccache clang"
           export CXX="ccache clang++"
-          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" KCFLAGS="-Wno-error" -j2
+          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" KCFLAGS="-Wno-error" -j$(nproc)
 
       - name: Verify close_range ada di kernel hasil build
         working-directory: kernel
@@ -101,7 +101,7 @@ jobs:
       - name: Build DTB + Image.gz-dtb
         working-directory: kernel
         run: |
-          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" dtbs
+          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" dtbs -j$(nproc)
           echo "=== All DTB files ==="
           find out/arch/arm64/boot/dts -name "*.dtb" | sort
           # Cari DTB untuk X00TD
