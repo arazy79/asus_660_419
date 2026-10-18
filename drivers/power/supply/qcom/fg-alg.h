@@ -58,6 +58,7 @@ struct cap_learning {
 	int64_t			final_cap_uah;
 	int64_t			learned_cap_uah;
 	int64_t			delta_cap_uah;
+	bool			cl_skip;
 	bool			active;
 	struct mutex		lock;
 	struct cl_params	dt;
