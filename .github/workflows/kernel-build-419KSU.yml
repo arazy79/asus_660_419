@@ -1,158 +1,4 @@
-name: Kernel Build X00TD 4.19 skywalker
-on:
-  workflow_dispatch:
-    inputs:
-      defconfig:
-        description: 'Defconfig path (relatif dari arch/arm64/configs/)'
-        required: true
-        default: 'X00TD_defconfig'
-      toolchain:
-        description: 'Pilih Toolchain'
-        type: choice
-        options:
-          - Neutron-Clang-24
-          - AOSP-LLVM-Clang
-          - GCC
-        default: 'Neutron-Clang-24'
-      enable_ksu:
-        description: 'Enable KernelSU'
-        type: boolean
-        default: false
-      ksu_setup_url:
-        description: 'KernelSU setup.sh URL'
-        required: true
-        default: 'https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh'
-      ksu_branch:
-        description: 'KernelSU branch/tag/commit'
-        required: true
-        default: 'master'
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    env:
-      TZ: Asia/Jakarta
-      ARCH: arm64
-      CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
-
-    steps:
-      - name: Checkout kernel source
-        uses: actions/checkout@v4
-        with:
-          repository: arazy79/asus_660_419
-          ref: 13
-          path: kernel
-          submodules: recursive
-
-      - name: Apply close_range backport
-        working-directory: kernel
-        run: |
-          if [ ! -f close_range_backport.patch ]; then
-            echo "::error::close_range_backport.patch tidak ada"
-            exit 1
-          fi
-          if git apply -R --check close_range_backport.patch 2>/dev/null; then
-            echo "Sudah ter-apply, skip"
-          else
-            git apply --check close_range_backport.patch
-            git apply close_range_backport.patch
-            echo "Applied"
-          fi
-
-      - name: Setup KernelSU
-        if: ${{ github.event.inputs.enable_ksu == 'true' }}
-        working-directory: kernel
-        env:
-          KSU_URL: ${{ github.event.inputs.ksu_setup_url }}
-          KSU_BRANCH: ${{ github.event.inputs.ksu_branch }}
-        run: |
-          curl -LSs "$KSU_URL" | bash -s "$KSU_BRANCH"
-          [ ! -f drivers/kernelsu/Kconfig ] && { echo "::error::KSU setup gagal"; exit 1; }
-
-      # ===== PILIHAN TOOLCHAIN =====
-      - name: Set Toolchain Variabel
-        id: tc
-        run: |
-          case "${{ github.event.inputs.toolchain }}" in
-            "Neutron-Clang-24")
-              echo "tc_dir=$HOME/neutron-clang" >> $GITHUB_OUTPUT
-              echo "cache_key=neutron24" >> $GITHUB_OUTPUT
-              echo "use_llvm=1" >> $GITHUB_OUTPUT
-              echo "cross_comp=aarch64-linux-gnu-" >> $GITHUB_OUTPUT
-              echo "desc=Neutron Clang 24" >> $GITHUB_OUTPUT
-              ;;
-            "AOSP-LLVM-Clang")
-              echo "tc_dir=$HOME/aosp-clang" >> $GITHUB_OUTPUT
-              echo "cache_key=aosp-clang-r596125" >> $GITHUB_OUTPUT
-              echo "use_llvm=1" >> $GITHUB_OUTPUT
-              echo "cross_comp=aarch64-linux-android-" >> $GITHUB_OUTPUT
-              echo "desc=AOSP Clang r596125" >> $GITHUB_OUTPUT
-              ;;
-            "GCC")
-              echo "tc_dir=$HOME/gcc-aarch64" >> $GITHUB_OUTPUT
-              echo "cache_key=gcc-12" >> $GITHUB_OUTPUT
-              echo "use_llvm=0" >> $GITHUB_OUTPUT
-              echo "cross_comp=aarch64-linux-gnu-" >> $GITHUB_OUTPUT
-              echo "desc=GCC 12" >> $GITHUB_OUTPUT
-              ;;
-          esac
-
-      - name: Restore Toolchain Cache
-        id: cache-tc
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.tc.outputs.tc_dir }}
-          key: ${{ steps.tc.outputs.cache_key }}-${{ github.run_id }}
-          restore-keys: |
-            ${{ steps.tc.outputs.cache_key }}-
-
-      - name: Download Neutron Clang 24
-        if: github.event.inputs.toolchain == 'Neutron-Clang-24' && steps.cache-tc.outputs.cache-hit != 'true'
-        run: |
-          sudo apt update && sudo apt install -y zstd
-          mkdir -p ${{ steps.tc.outputs.tc_dir }}
-          URL="https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/06092026/neutron-clang-06092026.tar.zst"
-          wget "$URL" -O /tmp/clang.tar.zst
-          tar --zstd -xvf /tmp/clang.tar.zst -C ${{ steps.tc.outputs.tc_dir }}
-          rm /tmp/clang.tar.zst
-
-      - name: Download AOSP Clang
-        if: github.event.inputs.toolchain == 'AOSP-LLVM-Clang' && steps.cache-tc.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ${{ steps.tc.outputs.tc_dir }}
-          URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/9b144befdfd93b90e02c663504fb9f4b95f9faf8/clang-r596125.tar.gz"
-          wget "$URL" -O /tmp/clang.tar.gz
-          tar -xvf /tmp/clang.tar.gz -C ${{ steps.tc.outputs.tc_dir }}
-          rm /tmp/clang.tar.gz
-
-      - name: Download GCC
-        if: github.event.inputs.toolchain == 'GCC' && steps.cache-tc.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ${{ steps.tc.outputs.tc_dir }}
-          wget -O- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo apt update && sudo apt install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-          # Symlink ke cache dir biar konsisten
-          ln -sf /usr/bin ${{ steps.tc.outputs.tc_dir }}/bin
-          ln -sf /usr/lib/gcc-cross ${{ steps.tc.outputs.tc_dir }}/lib
-
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ${{ steps.tc.outputs.cache_key }}-ccache-${{ github.run_id }}
-          restore-keys: |
-            ${{ steps.tc.outputs.cache_key }}-ccache-
-
-      - name: Install Dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y bc bison build-essential ccache curl flex g++-multilib git libncurses-dev lib32z1-dev liblz4-tool libssl-dev zip zlib1g-dev
-          # Hapus clang sistem kalau pakai Neutron/AOSP
-          if [ "${{ steps.tc.outputs.use_llvm }}" = "1" ]; then
-            sudo apt remove -y clang llvm lld || true
-          fi
-
-      - name: Prepare & Build
+      - name: Build kernel
         working-directory: kernel
         env:
           TC_DIR: ${{ steps.tc.outputs.tc_dir }}
@@ -165,22 +11,29 @@ jobs:
           export LD_LIBRARY_PATH="$TC_DIR/lib:$TC_DIR/lib64:${LD_LIBRARY_PATH:-}"
           
           if [ "$USE_LLVM" = "1" ]; then
+            # Kernel 4.19 butuh LLVM_IAS=0 — vDSO belum kompatibel
             export LLVM=1
-            export LLVM_IAS=1
+            export LLVM_IAS=0
             export CC="ccache clang"
             export CXX="ccache clang++"
-            export CCACHE_CC="clang"
-            echo "🔨 Pakai LLVM/Clang — $(clang --version | head -n 1)"
+            export LD="ld.lld"
+            echo "🔨 $TOOLCHAIN_DESC — Clang + ld.lld + GNU as (LLVM_IAS=0)"
+            clang --version | head -n 1
           else
             unset LLVM
             unset LLVM_IAS
             export CC="ccache ${CROSS_COMPILE}gcc"
             export CXX="ccache ${CROSS_COMPILE}g++"
-            echo "🔨 Pakai GCC — $($CC --version | head -n 1)"
+            export LD="${CROSS_COMPILE}ld"
+            echo "🔨 $TOOLCHAIN_DESC — GCC"
+            $CC --version | head -n 1
           fi
           
           mkdir -p out
           cp arch/arm64/configs/vendor/asus/${{ github.event.inputs.defconfig }} out/.config
+          
+          # Matikan COMPAT_VDSO biar aman
+          sed -i 's/CONFIG_COMPAT_VDSO=y/# CONFIG_COMPAT_VDSO is not set/' out/.config
           
           if [ "$ENABLE_KSU" = "true" ]; then
             cat arch/arm64/configs/vendor/extra/ksu.config >> out/.config
@@ -193,22 +46,8 @@ jobs:
           make ARCH=$ARCH O=out \
             CC="$CC" \
             CXX="$CXX" \
+            LD="$LD" \
             CROSS_COMPILE="$CROSS_COMPILE" \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             KCFLAGS="-Wno-error" \
             -j$(nproc)
-
-      - name: Gabung Image.gz-dtb
-        working-directory: kernel
-        run: |
-          DTB=$(find out/arch/arm64/boot/dts -name "*x00td*.dtb" -o -name "sdm636.dtb" -o -name "sdm660.dtb" | head -1)
-          [ -z "$DTB" ] && { echo "::error::DTB tidak ketemu"; exit 1; }
-          cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
-          echo "✅ Image.gz-dtb siap — $(ls -lh out/arch/arm64/boot/Image.gz-dtb)"
-
-      - name: Upload Hasil
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: X00TD-4.19-${{ steps.tc.outputs.desc }}-${{ github.event.inputs.enable_ksu == 'true' && 'KSU' || 'NOKSU' }}-${{ github.run_id }}
-          path: kernel/out/arch/arm64/boot/Image.gz-dtb
