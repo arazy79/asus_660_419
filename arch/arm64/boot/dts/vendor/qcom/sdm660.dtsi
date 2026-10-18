@@ -1148,18 +1148,18 @@
 			<  2150400000 0x04040070 0x0b590059 0x2 6 >,
 			<  2208000000 0x04040073 0x0b5c005c 0x3 7 >;
 
-		qcom,up-timer = <1000 1000>;
+		qcom,up-timer = <500 500>;
 		qcom,down-timer = <1000 1000>;
 		qcom,set-ret-inactive;
 		qcom,enable-llm-freq-vote;
-		qcom,llm-freq-up-timer = <327675 327675>;
-		qcom,llm-freq-down-timer = <327675 327675>;
+		qcom,llm-freq-up-timer = <300000 300000>;
+		qcom,llm-freq-down-timer = <300000 300000>;
 		qcom,enable-llm-volt-vote;
-		qcom,llm-volt-up-timer = <327675 327675>;
-		qcom,llm-volt-down-timer = <327675 327675>;
-		qcom,cc-reads = <10>;
-		qcom,cc-delay = <5>;
-		qcom,cc-factor = <100>;
+		qcom,llm-volt-up-timer = <300000 300000>;
+		qcom,llm-volt-down-timer = <300000 300000>;
+		qcom,cc-reads = <8>;
+		qcom,cc-delay = <4>;
+		qcom,cc-factor = <90>;
 		qcom,osm-clk-rate = <200000000>;
 		qcom,xo-clk-rate = <19200000>;
 
@@ -1171,7 +1171,7 @@
 		qcom,apm-mode-ctl = <0x179d0004 0x179d0010>;
 		qcom,apm-ctrl-status = <0x179d000c 0x179d0018>;
 
-		qcom,apm-threshold-voltage = <872000>;
+		qcom,apm-threshold-voltage = <870000>;
 		qcom,boost-fsm-en;
 		qcom,safe-fsm-en;
 		qcom,ps-fsm-en;
