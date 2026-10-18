@@ -5,11 +5,11 @@ on:
       kernel_repo:
         description: 'Kernel repository (username/repo)'
         required: true
-        default: ''
+        default: 'https://github.com/arazy79/asus_660_419'
       kernel_branch:
         description: 'Kernel branch / tag / commit'
         required: true
-        default: ''
+        default: '13'
       defconfig:
         description: 'Defconfig path (relatif dari arch/arm64/configs/vendor/asus/)'
         required: true
