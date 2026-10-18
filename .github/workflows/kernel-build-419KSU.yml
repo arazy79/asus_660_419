@@ -6,6 +6,18 @@ on:
         description: 'Defconfig path (relatif dari arch/arm64/configs/)'
         required: true
         default: 'X00TD_defconfig'
+      toolchain:
+        description: 'Toolchain: default = clang+binutils bawaan Ubuntu (seperti biasa) | llvm = Neutron clang 24 | gcc = EVA GCC'
+        type: choice
+        default: 'default'
+        options:
+          - default
+          - llvm
+          - gcc
+      kcflags_w:
+        description: 'Enable KCFLAGS=-w (tekan semua warning)'
+        type: boolean
+        default: false
       enable_ksu:
         description: 'Enable KernelSU (centang = ON)'
         type: boolean
@@ -85,15 +97,47 @@ jobs:
             exit 1
           fi
 
+      - name: Select toolchain
+        id: tc
+        env:
+          TOOLCHAIN: ${{ github.event.inputs.toolchain }}
+        run: |
+          case "$TOOLCHAIN" in
+            llvm)
+              echo "dir=$HOME/neutron-clang" >> "$GITHUB_OUTPUT"
+              echo "key=llvm-24-neutron-06092026" >> "$GITHUB_OUTPUT"
+              echo "out_prefix=kernel-out-llvm-" >> "$GITHUB_OUTPUT"
+              ;;
+            gcc)
+              echo "dir=$HOME/gcc-arm64" >> "$GITHUB_OUTPUT"
+              echo "key=gcc-eva-arm64-06052026" >> "$GITHUB_OUTPUT"
+              echo "out_prefix=kernel-out-gcc-" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "dir=" >> "$GITHUB_OUTPUT"
+              echo "key=" >> "$GITHUB_OUTPUT"
+              echo "out_prefix=kernel-build-" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+          echo "Toolchain dipilih: $TOOLCHAIN"
+
       - name: Restore ccache & build cache
         uses: actions/cache@v4
         with:
           path: |
             kernel/out/.ccache
             kernel/out
-          key: kernel-build-${{ github.run_id }}
+          key: ${{ steps.tc.outputs.out_prefix }}${{ github.run_id }}
           restore-keys: |
-            kernel-build-
+            ${{ steps.tc.outputs.out_prefix }}
+
+      - name: Cache toolchain
+        id: tc_cache
+        if: ${{ github.event.inputs.toolchain != 'default' }}
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.tc.outputs.dir }}
+          key: ${{ steps.tc.outputs.key }}
 
       - name: Install dependencies
         run: |
@@ -101,6 +145,74 @@ jobs:
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick libncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
           sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
           sudo apt-get install -y clang llvm lld
+          sudo apt-get install -y zstd wget xz-utils
+
+      - name: Fetch toolchain
+        if: ${{ github.event.inputs.toolchain != 'default' && steps.tc_cache.outputs.cache-hit != 'true' }}
+        env:
+          TOOLCHAIN: ${{ github.event.inputs.toolchain }}
+        run: |
+          if [ "$TOOLCHAIN" = "llvm" ]; then
+            echo "Downloading Neutron clang..."
+            mkdir -p "$HOME/neutron-clang"
+            wget -q "https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/06092026/neutron-clang-06092026.tar.zst" -O /tmp/clang.tar.zst
+            tar -xf /tmp/clang.tar.zst -C "$HOME/neutron-clang"
+            rm -f /tmp/clang.tar.zst
+            if [ ! -x "$HOME/neutron-clang/bin/clang" ]; then
+              echo "::error::bin/clang tidak ada setelah extract Neutron"
+              ls -la "$HOME/neutron-clang" || true
+              exit 1
+            fi
+          else
+            echo "Downloading EVA GCC..."
+            cd "$HOME"
+            wget -q "https://github.com/mvaisakh/gcc-build/releases/download/06052026/eva-gcc-arm64-06052026.xz" -O gcc.tar.xz
+            tar -xf gcc.tar.xz
+            rm -f gcc.tar.xz
+            if [ ! -d "$HOME/gcc-arm64/bin" ]; then
+              echo "::error::folder gcc-arm64/bin tidak ada setelah extract EVA GCC"
+              ls -la "$HOME" || true
+              exit 1
+            fi
+          fi
+
+      - name: Setup toolchain environment
+        env:
+          TOOLCHAIN: ${{ github.event.inputs.toolchain }}
+          KCFLAGS_W: ${{ github.event.inputs.kcflags_w }}
+        run: |
+          case "$TOOLCHAIN" in
+            llvm)
+              TC="$HOME/neutron-clang"
+              echo "$TC/bin" >> "$GITHUB_PATH"
+              echo "LD_LIBRARY_PATH=$TC/lib:$TC/lib64:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+              echo "TC_MAKE_ARGS=LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
+              ;;
+            gcc)
+              TC="$HOME/gcc-arm64"
+              prefix=""
+              for p in aarch64-linux-android- aarch64-linux-gnu- aarch64-elf- aarch64-linux-; do
+                if [ -f "$TC/bin/${p}gcc" ]; then prefix="$p"; break; fi
+              done
+              if [ -z "$prefix" ]; then
+                echo "::error::gcc aarch64 tidak ditemukan di $TC/bin"
+                ls -la "$TC/bin" || true
+                exit 1
+              fi
+              echo "$TC/bin" >> "$GITHUB_PATH"
+              echo "TC_MAKE_ARGS=CROSS_COMPILE=$TC/bin/$prefix CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "TC_MAKE_ARGS=CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
+              ;;
+          esac
+          # KCFLAGS: default tetap -Wno-error (seperti sebelumnya); -w kalau dicentang.
+          # Di mode gcc selalu -w (sama seperti env-gcc.sh di build action rsuntk).
+          if [ "$KCFLAGS_W" = "true" ] || [ "$TOOLCHAIN" = "gcc" ]; then
+            echo "TC_KCFLAGS=-w" >> "$GITHUB_ENV"
+          else
+            echo "TC_KCFLAGS=-Wno-error" >> "$GITHUB_ENV"
+          fi
 
       - name: Debug - Check files
         run: |
@@ -110,6 +222,9 @@ jobs:
           ls -la kernel/arch/arm64/configs/vendor/asus/${{ github.event.inputs.defconfig }} || echo "FILE NOT FOUND!"
           echo "=== All defconfigs ==="
           ls -la kernel/arch/arm64/configs/
+          echo "=== Toolchain ==="
+          echo "TC_MAKE_ARGS=$TC_MAKE_ARGS"
+          echo "TC_KCFLAGS=$TC_KCFLAGS"
 
       - name: Prepare output directory
         run: |
@@ -127,14 +242,21 @@ jobs:
           else
             echo "KernelSU: OFF"
           fi
-          yes "" | make ARCH=${{ env.ARCH }} O=out oldconfig
+          yes "" | make ARCH=${{ env.ARCH }} O=out $TC_MAKE_ARGS oldconfig
 
       - name: Build kernel
         working-directory: kernel
         run: |
           export CC="ccache clang"
           export CXX="ccache clang++"
-          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" KCFLAGS="-Wno-error" -j$(nproc)
+          echo "CPU cores: $(nproc)"
+          make ARCH=${{ env.ARCH }} O=out $TC_MAKE_ARGS KCFLAGS="$TC_KCFLAGS" -j"$(nproc)"
+
+      - name: Show compiler used
+        working-directory: kernel
+        continue-on-error: true
+        run: |
+          grep -E "LINUX_COMPILER|UTS_VERSION" out/include/generated/compile.h || true
 
       - name: Verify close_range ada di kernel hasil build
         working-directory: kernel
@@ -163,7 +285,7 @@ jobs:
       - name: Build DTB + Image.gz-dtb
         working-directory: kernel
         run: |
-          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" dtbs -j$(nproc)
+          make ARCH=${{ env.ARCH }} O=out $TC_MAKE_ARGS dtbs
           echo "=== All DTB files ==="
           find out/arch/arm64/boot/dts -name "*.dtb" | sort
           # Cari DTB untuk X00TD
@@ -199,6 +321,6 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Build-X00TD-SKYWALKER-4.19-${{ github.event.inputs.enable_ksu == 'true' && 'KSU' || 'NOKSU' }}-${{ github.run_id }}
+          name: Kernel-Build-X00TD-SKYWALKER-4.19-${{ github.event.inputs.toolchain }}-${{ github.event.inputs.enable_ksu == 'true' && 'KSU' || 'NOKSU' }}-${{ github.run_id }}
           path: |
             kernel/out/arch/arm64/boot/Image.gz-dtb
