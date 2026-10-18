@@ -6,12 +6,12 @@ on:
         description: 'Repo Sumber'
         required: true
         type: string
-        default: 'rusakseven/RSKSevenProject-X00TD'
+        default: 'asus_660_419'
       source_branch:
         description: 'Branch yang mau diambil'
         required: true
         type: string
-        default: 'rsk-4.4-clean2'
+        default: '13'
       new_branch_name:
         description: 'Nama branch baru di repo kamu'
         required: true
@@ -35,7 +35,7 @@ jobs:
       - name: Hapus folder workflow dari sumber → biar gak diblokir
         run: |
           cd source-code
-          rm -rf .github/workflows/
+          rm -rf .github/workflowsxx/
           echo "✅ Folder workflow dibersihkan"
 
       - name: Kirim ke repo kamu
