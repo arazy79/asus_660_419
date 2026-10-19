@@ -662,6 +662,8 @@
 		qcom,clk-div = <27>;
 	};
 
+#include "sdm660-lpi.dtsi"
+
 	audio_apr: qcom,msm-audio-apr {
 		compatible = "qcom,msm-audio-apr";
 		qcom,subsys-name = "apr_adsp";
