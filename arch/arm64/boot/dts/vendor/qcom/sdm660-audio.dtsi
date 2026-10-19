@@ -6,8 +6,6 @@
 	};
 };
 
-#include "sdm660-lpi.dtsi"
-
 &q6core {
 	cdc_pdm_gpios: cdc_pdm_pinctrl {
 		compatible = "qcom,msm-cdc-pinctrl";
