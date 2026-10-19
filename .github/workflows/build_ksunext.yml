@@ -1,4 +1,4 @@
-name: Kernel Build X00TD 4.19 + KSU-Next + SUSFS (Fixed Toolchain)
+name: Kernel Build X00TD 4.19 + KSU-Next + SUSFS (Proven Toolchain)
 
 on:
   workflow_dispatch:
@@ -14,6 +14,9 @@ jobs:
     env:
       TZ: Asia/Jakarta
       ARCH: arm64
+      CC: clang
+      CROSS_COMPILE: aarch64-linux-gnu-
+      CROSS_COMPILE_ARM32: arm-linux-gnueabi-
       CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
     steps:
       - name: Checkout kernel source
@@ -64,8 +67,9 @@ jobs:
         working-directory: kernel
         run: |
           echo "Cloning KernelSU-Next..."
-          git clone https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU --depth=1
+          git clone https://github.com/rifsxd/KernelSU-Next.git KernelSU --depth=1
           echo "KernelSU-Next cloned successfully"
+          ls -la KernelSU/
 
       - name: 🛡️ Apply SUSFS Patch (kernel-4.19)
         working-directory: kernel
@@ -101,27 +105,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick libncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
           sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-          sudo apt-get install -y zstd
+          sudo apt-get install -y clang llvm lld
 
-      - name: 🚀 Download Neutron Clang 24 (Fixed URL)
+      - name: Debug - Check files
         run: |
-          echo "Downloading Neutron Clang 24..."
-          mkdir -p neutron-clang
-          cd neutron-clang
-          
-          # URL yang bener buat Neutron Clang 24
-          curl -LO "https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/latest/download/neutron-clang-24.0.0-x86_64-linux-gnu.tar.zst"
-          
-          echo "Checking file size..."
-          ls -lh neutron-clang-24.0.0-x86_64-linux-gnu.tar.zst
-          
-          echo "Extracting..."
-          tar --use-compress-program=unzstd -xf neutron-clang-24.0.0-x86_64-linux-gnu.tar.zst
-          
-          echo "$(pwd)/bin" >> $GITHUB_PATH
-          echo "NEUTRON_PATH=$(pwd)/bin" >> $GITHUB_ENV
-          echo "===== Neutron Clang Version ====="
-          $(pwd)/bin/clang --version | head -3
+          echo "=== Kernel directory contents ==="
+          ls -la kernel/
+          echo "=== Defconfig exists? ==="
+          ls -la kernel/arch/arm64/configs/vendor/asus/${{ github.event.inputs.defconfig }} || echo "FILE NOT FOUND!"
 
       - name: Prepare output directory
         working-directory: kernel
@@ -145,38 +136,19 @@ jobs:
           echo "===== CEK CONFIG KSU / SUSFS ====="
           grep -E '^CONFIG_(KSU|KSU_SUSFS|NO_HZ)' out/.config || echo "WARNING: CONFIG_KSU tidak ditemukan!"
 
-      - name: Build kernel (Neutron Clang 24)
+      - name: Build kernel
         working-directory: kernel
         run: |
-          export CC="ccache $NEUTRON_PATH/clang"
-          export CXX="ccache $NEUTRON_PATH/clang++"
-          export LD="$NEUTRON_PATH/ld.lld"
-          export AR="$NEUTRON_PATH/llvm-ar"
-          export NM="$NEUTRON_PATH/llvm-nm"
-          export OBJCOPY="$NEUTRON_PATH/llvm-objcopy"
-          export OBJDUMP="$NEUTRON_PATH/llvm-objdump"
-          export STRIP="$NEUTRON_PATH/llvm-strip"
-          
-          echo "===== Toolchain Info ====="
-          $NEUTRON_PATH/clang --version | head -1
-          
-          make ARCH=${{ env.ARCH }} O=out \
-            CC="$CC" \
-            LD="$LD" \
-            AR="$AR" \
-            NM="$NM" \
-            OBJCOPY="$OBJCOPY" \
-            OBJDUMP="$OBJDUMP" \
-            STRIP="$STRIP" \
-            CROSS_COMPILE="aarch64-linux-gnu-" \
-            CROSS_COMPILE_ARM32="arm-linux-gnueabi-" \
-            -j$(nproc)
+          export CC="ccache clang"
+          export CXX="ccache clang++"
+          make ARCH=${{ env.ARCH }} O=out CC="${{ env.CC }}" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" KCFLAGS="-Wno-error" -j$(nproc)
 
       - name: Build DTB + Image.gz-dtb
         working-directory: kernel
         run: |
-          export CC="ccache $NEUTRON_PATH/clang"
-          make ARCH=${{ env.ARCH }} O=out CC="$CC" CROSS_COMPILE="aarch64-linux-gnu-" dtbs -j$(nproc)
+          make ARCH=${{ env.ARCH }} O=out CC="ccache clang" CROSS_COMPILE="${{ env.CROSS_COMPILE }}" dtbs -j$(nproc)
+          echo "=== All DTB files ==="
+          find out/arch/arm64/boot/dts -name "*.dtb" | sort
           
           DTB=$(find out/arch/arm64/boot/dts -iname "*x00td*.dtb" | head -1)
           if [ -z "$DTB" ]; then DTB=$(find out/arch/arm64/boot/dts -name "sdm636.dtb" | head -1); fi
@@ -185,13 +157,18 @@ jobs:
           
           echo "Using DTB: $DTB"
           cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
+          echo "=== Final size ==="
           ls -lh out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image.gz-dtb
+
+      - name: Check build result
+        run: |
+          ls -la kernel/out/arch/arm64/boot/
 
       - name: Upload Image.gz-dtb
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-X00TD-KSUNext-SUSFS-Neutron24-${{ github.run_id }}
+          name: Kernel-X00TD-KSUNext-SUSFS-${{ github.run_id }}
           path: |
             kernel/out/arch/arm64/boot/Image.gz-dtb
             kernel/out/.config
