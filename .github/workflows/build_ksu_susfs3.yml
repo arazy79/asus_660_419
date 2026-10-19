@@ -1,130 +1,137 @@
-name: Build Kernel 4.19 + KSU + SUSFS (X00TD) - Neutron-like
+name: Build X00TD - KSU + SUSFS (Stable Toolchain)
 
 on:
   workflow_dispatch:
     inputs:
       defconfig:
-        description: 'Path file defconfig (Biarkan default ini)'
+        description: 'Full path defconfig'
         required: true
         default: 'arch/arm64/configs/vendor/asus/X00TD_defconfig'
       device_name:
-        description: 'Nama device untuk label output'
+        description: 'Label artifact'
         required: true
         default: 'Asus_X00TD'
 
+env:
+  ARCH: arm64
+  SUBARCH: arm64
+
 jobs:
   build:
-    name: Build Kernel with KSU & SUSFS
-    runs-on: ubuntu-24.04 # Upgrade ke 24.04 untuk akses Clang 18 yang lebih modern
+    runs-on: ubuntu-22.04   # BALIK ke 22.04: GCC 11, bukan GCC 13
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Build Dependencies (Modern LLVM)
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl git python3 build-essential libssl-dev bc bison flex libelf-dev \
-                                  clang-18 lld-18 llvm-18 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+          sudo apt-get install -y git curl python3 build-essential libssl-dev bc bison flex libelf-dev \
+            clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi
+          echo "===== TOOLCHAIN YANG DIPAKAI ====="
+          clang-14 --version | head -1
+          gcc --version | head -1
+          aarch64-linux-gnu-ld --version | head -1
 
-      - name: 🔧 Auto-Fix Trailing Backslash (Clang Strictness Fix)
+      - name: Fix nohz_flags (build-time)
         run: |
-          echo "Membersihkan spasi setelah backslash (\) di seluruh source code..."
-          # Ini fix ampuh untuk error "backslash and newline separated by space" di Clang modern
-          find . -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/\\[[:space:]]*$/\\/' {} +
-          echo "✅ Pembersihan spasi backslash selesai!"
-
-      - name: 🔧 Auto-Fix nohz_flags Error
-        run: |
-          echo "Mencoba memperbaiki error implicit declaration 'nohz_flags'..."
-          python3 -c "
+          python3 - <<'PY'
           import re
-          try:
-              with open('kernel/sched/core.c', 'r') as f:
-                  content = f.read()
-              content = re.sub(
+          p = 'kernel/sched/core.c'
+          s = open(p).read()
+          if 'atomic_fetch_or(NOHZ_KICK_MASK, nohz_flags(cpu))' in s and '#ifdef CONFIG_NO_HZ_COMMON' not in s:
+              s = re.sub(
                   r'(\s+)if \(!atomic_fetch_or\(NOHZ_KICK_MASK, nohz_flags\(cpu\)\)\)',
                   r'\1#ifdef CONFIG_NO_HZ_COMMON\n\1if (!atomic_fetch_or(NOHZ_KICK_MASK, nohz_flags(cpu)))\n\1#endif',
-                  content
-              )
-              with open('kernel/sched/core.c', 'w') as f:
-                  f.write(content)
-              print('✅ Fix nohz_flags berhasil!')
-          except FileNotFoundError:
-              print('⚠️ File kernel/sched/core.c tidak ditemukan.')
-          "
+                  s)
+              open(p, 'w').write(s)
+              print('nohz_flags: fixed')
+          else:
+              print('nohz_flags: tidak perlu diubah')
+          PY
 
-      - name: 🛡️ Setup KernelSU
+      - name: Setup KernelSU
         run: |
-          echo "Mengunduh KernelSU v0.9.5..."
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
 
-      - name: 🛡️ Apply SUSFS Patch
+      - name: Apply SUSFS (kernel-4.19)
         run: |
-          echo "Mengunduh patch SUSFS untuk kernel 4.19..."
           curl -sSL https://gitlab.com/simonpunk/susfs4ksu/-/raw/kernel-4.19/kernel_patches/50_add_susfs_in_kernel-4.19.patch -o susfs.patch
-          
           if patch -p1 --fuzz=3 --ignore-whitespace < susfs.patch; then
-              echo "✅ Patch SUSFS berhasil diterapkan!"
+            echo "SUSFS: OK"
           else
-              echo "❌ Patch SUSFS gagal. Generate reject files..."
-              patch -p1 --reject-file=- < susfs.patch || true
-              find . -name "*.rej" -type f > reject_files.txt
-              cat reject_files.txt
-              exit 1
+            patch -p1 --reject-file=- < susfs.patch || true
+            find . -name '*.rej' -type f > reject_files.txt || true
+            exit 1
           fi
 
-      - name: 📦 Upload Reject Files (Jika Gagal)
-        if: failure()
+      - name: Generate Config
+        run: |
+          DC="${{ inputs.defconfig }}"
+          [ -f "$DC" ] || { echo "DEFCONFIG TIDAK KETEMU: $DC"; exit 1; }
+          DC_NAME="${DC#arch/arm64/configs/}"   # anti path dobel
+          echo "make target: $DC_NAME"
+          make -j"$(nproc)" O=out "$DC_NAME"
+
+      - name: Enable KSU + SUSFS & Neutralize Vendor -Werror
+        run: |
+          # 1. Root + SUSFS
+          ./scripts/config --file out/.config --enable KSU
+          ./scripts/config --file out/.config --enable KSU_SUSFS
+
+          # 2. Paksa NO_HZ biar fix core.c konsisten
+          ./scripts/config --file out/.config --enable NO_HZ_COMMON
+          ./scripts/config --file out/.config --enable NO_HZ_IDLE
+          ./scripts/config --file out/.config --disable NO_HZ_FULL
+          ./scripts/config --file out/.config --disable HZ_PERIODIC
+
+          # 3. Matikan WERROR kalau symbol-nya ada
+          ./scripts/config --file out/.config --disable WERROR || true
+
+          # 4. Buang token -Werror STANDALONE di Makefile techpack
+          #    (JANGAN sentuh -Werror=xxx, itu beda flag)
+          python3 - <<'PY'
+          import re, pathlib
+          n = 0
+          for p in pathlib.Path('techpack').rglob('Makefile'):
+              s = p.read_text(errors='ignore')
+              t = re.sub(r'(?<![\w-])-Werror(?![\w=])', '', s)
+              if t != s:
+                  p.write_text(t)
+                  n += 1
+          print(f'-Werror dihapus dari {n} Makefile techpack')
+          PY
+
+          make -j"$(nproc)" O=out olddefconfig
+
+          echo "===== CEK CONFIG KSU / SUSFS / NO_HZ ====="
+          grep -E '^CONFIG_(KSU|NO_HZ)' out/.config || echo "WARNING: tidak ada CONFIG_KSU!"
+
+      - name: Build Kernel
+        run: |
+          # CC dkk di command-line = nggak bisa dioverride sama Makefile sub-dir
+          make -j"$(nproc)" O=out \
+            CC=clang-14 LD=ld.lld-14 AR=llvm-ar-14 NM=llvm-nm-14 \
+            OBJCOPY=llvm-objcopy-14 OBJDUMP=llvm-objdump-14 STRIP=llvm-strip-14 \
+            CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            KCFLAGS="-Wno-error"
+
+      - name: Cek Hasil Build
+        run: |
+          echo "===== HASIL COMPILE ====="
+          ls -lh out/arch/arm64/boot/ || true
+          find out/arch/arm64/boot -maxdepth 2 -type f -name 'Image*' -o -type f -name '*.dtb' | head -30
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SUSFS_Patch_Reject_Files
-          path: |
-            *.rej
-            reject_files.txt
-            susfs.patch
-
-      - name: ⚙️ Enable KSU & SUSFS in Defconfig
-        run: |
-          echo "Mengaktifkan CONFIG_KSU dan CONFIG_KSU_SUSFS..."
-          if [ -f "${{ inputs.defconfig }}" ]; then
-              ./scripts/config --file ${{ inputs.defconfig }} --enable KSU
-              ./scripts/config --file ${{ inputs.defconfig }} --enable KSU_SUSFS
-              echo "✅ Konfigurasi berhasil!"
-          else
-              echo "❌ File defconfig tidak ditemukan!"
-              exit 1
-          fi
-
-      - name: 🚀 Build Kernel
-        run: |
-          echo "Memulai proses compile kernel dengan Clang 18..."
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CC=clang-18
-          export LD=ld.lld-18
-          export AR=llvm-ar-18
-          export NM=llvm-nm-18
-          export OBJCOPY=llvm-objcopy-18
-          export OBJDUMP=llvm-objdump-18
-          export STRIP=llvm-strip-18
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-          
-          FULL_PATH="${{ inputs.defconfig }}"
-          DEFCONFIG_NAME="${FULL_PATH#arch/arm64/configs/}"
-          echo "Menggunakan defconfig untuk make: $DEFCONFIG_NAME"
-          
-          make -j$(nproc --all) O=out $DEFCONFIG_NAME
-          make -j$(nproc --all) O=out
-
-      - name: 📦 Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.device_name }}_KSU_SUSFS_Kernel
+          name: ${{ inputs.device_name }}_KSU_SUSFS
+          if-no-files-found: warn
           path: |
             out/arch/arm64/boot/Image
             out/arch/arm64/boot/Image.gz
             out/arch/arm64/boot/Image.gz-dtb
             out/arch/arm64/boot/dts/**/*.dtb
+            out/.config
