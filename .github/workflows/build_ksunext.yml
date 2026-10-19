@@ -1,0 +1,188 @@
+name: Kernel Build X00TD 4.19 + KSU-Next + SUSFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      defconfig:
+        description: 'Defconfig path (relatif dari arch/arm64/configs/)'
+        required: true
+        default: 'X00TD_defconfig'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Jakarta
+      ARCH: arm64
+      CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          repository: arazy79/asus_660_419
+          ref: 13
+          path: kernel
+          submodules: recursive
+
+      - name: Apply close_range backport
+        working-directory: kernel
+        run: |
+          if [ -f close_range_backport.patch ]; then
+            if ! git apply -R --check close_range_backport.patch 2>/dev/null; then
+              git apply --check close_range_backport.patch
+              git apply close_range_backport.patch
+              echo "close_range backport applied"
+            else
+              echo "close_range backport sudah ter-apply, skip"
+            fi
+          else
+            echo "close_range_backport.patch tidak ada, skip"
+          fi
+
+      - name: 🔧 Auto-Fix nohz_flags Error
+        working-directory: kernel
+        run: |
+          python3 - <<'PY'
+          import re
+          p = 'kernel/sched/core.c'
+          try:
+              s = open(p).read()
+              if 'atomic_fetch_or(NOHZ_KICK_MASK, nohz_flags(cpu))' in s:
+                  s = re.sub(
+                      r'(\s+)if \(!atomic_fetch_or\(NOHZ_KICK_MASK, nohz_flags\(cpu\)\)\)',
+                      r'\1#ifdef CONFIG_NO_HZ_COMMON\n\1if (!atomic_fetch_or(NOHZ_KICK_MASK, nohz_flags(cpu)))\n\1#endif',
+                      s)
+                  open(p, 'w').write(s)
+                  print('✅ nohz_flags: fixed')
+              else:
+                  print('nohz_flags: tidak perlu diubah')
+          except FileNotFoundError:
+              print('⚠️ kernel/sched/core.c tidak ditemukan')
+          PY
+
+      - name: 🛡️ Setup KernelSU-Next (Modern Non-GKI Support)
+        working-directory: kernel
+        run: |
+          echo "Mengunduh KernelSU-Next (Support 4.19 non-GKI)..."
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/main/kernel/setup.sh" | bash -s main
+
+      - name: 🛡️ Apply SUSFS Patch (kernel-4.19)
+        working-directory: kernel
+        run: |
+          echo "Mengunduh patch SUSFS untuk kernel 4.19..."
+          curl -sSL https://gitlab.com/simonpunk/susfs4ksu/-/raw/kernel-4.19/kernel_patches/50_add_susfs_in_kernel-4.19.patch -o susfs.patch
+          
+          if patch -p1 --fuzz=3 --ignore-whitespace < susfs.patch; then
+              echo "✅ Patch SUSFS berhasil diterapkan!"
+          else
+              echo "❌ Patch SUSFS gagal. Generate reject files..."
+              patch -p1 --reject-file=- < susfs.patch || true
+              find . -name "*.rej" -type f > reject_files.txt
+              if [ -s reject_files.txt ]; then
+                  echo "File yang konflik:"
+                  cat reject_files.txt
+              fi
+              exit 1
+          fi
+
+      - name: Restore ccache & build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            kernel/out/.ccache
+            kernel/out
+          key: kernel-build-${{ github.run_id }}
+          restore-keys: |
+            kernel-build-
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick libncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+      - name: 🚀 Download Neutron Clang 24
+        run: |
+          echo "Downloading Neutron Clang 24..."
+          mkdir -p neutron-clang
+          cd neutron-clang
+          curl -LO "https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/24.0.0/neutron-clang-24.0.0-x86_64-linux-gnu.tar.zst"
+          echo "Extracting..."
+          tar --use-compress-program=unzstd -xf neutron-clang-24.0.0-x86_64-linux-gnu.tar.zst
+          echo "$(pwd)/bin" >> $GITHUB_PATH
+          echo "NEUTRON_PATH=$(pwd)/bin" >> $GITHUB_ENV
+          echo "===== Neutron Clang Version ====="
+          $(pwd)/bin/clang --version | head -3
+
+      - name: Prepare output directory
+        working-directory: kernel
+        run: mkdir -p out
+
+      - name: Make defconfig
+        working-directory: kernel
+        run: |
+          cp arch/arm64/configs/vendor/asus/${{ github.event.inputs.defconfig }} out/.config
+          yes "" | make ARCH=${{ env.ARCH }} O=out oldconfig
+
+      - name: ⚙️ Enable KSU & SUSFS in Config
+        working-directory: kernel
+        run: |
+          ./scripts/config --file out/.config --enable KSU
+          ./scripts/config --file out/.config --enable KSU_SUSFS
+          ./scripts/config --file out/.config --enable NO_HZ_COMMON
+          ./scripts/config --file out/.config --enable NO_HZ_IDLE
+          make ARCH=${{ env.ARCH }} O=out olddefconfig
+          
+          echo "===== CEK CONFIG KSU / SUSFS ====="
+          grep -E '^CONFIG_(KSU|KSU_SUSFS|NO_HZ)' out/.config || echo "WARNING: CONFIG_KSU tidak ditemukan!"
+
+      - name: Build kernel (Neutron Clang 24)
+        working-directory: kernel
+        run: |
+          export CC="ccache $NEUTRON_PATH/clang"
+          export CXX="ccache $NEUTRON_PATH/clang++"
+          export LD="$NEUTRON_PATH/ld.lld"
+          export AR="$NEUTRON_PATH/llvm-ar"
+          export NM="$NEUTRON_PATH/llvm-nm"
+          export OBJCOPY="$NEUTRON_PATH/llvm-objcopy"
+          export OBJDUMP="$NEUTRON_PATH/llvm-objdump"
+          export STRIP="$NEUTRON_PATH/llvm-strip"
+          
+          echo "===== Toolchain Info ====="
+          $NEUTRON_PATH/clang --version | head -1
+          
+          make ARCH=${{ env.ARCH }} O=out \
+            CC="$CC" \
+            LD="$LD" \
+            AR="$AR" \
+            NM="$NM" \
+            OBJCOPY="$OBJCOPY" \
+            OBJDUMP="$OBJDUMP" \
+            STRIP="$STRIP" \
+            CROSS_COMPILE="aarch64-linux-gnu-" \
+            CROSS_COMPILE_ARM32="arm-linux-gnueabi-" \
+            -j$(nproc)
+
+      - name: Build DTB + Image.gz-dtb
+        working-directory: kernel
+        run: |
+          export CC="ccache $NEUTRON_PATH/clang"
+          make ARCH=${{ env.ARCH }} O=out CC="$CC" CROSS_COMPILE="aarch64-linux-gnu-" dtbs -j$(nproc)
+          
+          DTB=$(find out/arch/arm64/boot/dts -iname "*x00td*.dtb" | head -1)
+          if [ -z "$DTB" ]; then DTB=$(find out/arch/arm64/boot/dts -name "sdm636.dtb" | head -1); fi
+          if [ -z "$DTB" ]; then DTB=$(find out/arch/arm64/boot/dts -name "sdm660.dtb" | head -1); fi
+          if [ -z "$DTB" ]; then echo "ERROR: No DTB found!"; exit 1; fi
+          
+          echo "Using DTB: $DTB"
+          cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
+          ls -lh out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image.gz-dtb
+
+      - name: Upload Image.gz-dtb
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-X00TD-KSUNext-SUSFS-Neutron24-${{ github.run_id }}
+          path: |
+            kernel/out/arch/arm64/boot/Image.gz-dtb
+            kernel/out/.config
