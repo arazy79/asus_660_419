@@ -1,0 +1,113 @@
+name: Build Kernel 4.19 + KSU + SUSFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      defconfig:
+        description: 'Path file defconfig (CEK DULU: vendor/asus/... atau arch/arm64/configs/...)'
+        required: true
+        default: 'vendor/asus/sdm660-perf_defconfig' # ⚠️ GANTI INI SESUAI REPO LO
+      device_name:
+        description: 'Nama device untuk label output zip/artifact'
+        required: true
+        default: 'Asus_SDM660'
+
+jobs:
+  build:
+    name: Build Kernel with KSU & SUSFS
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl git python3 build-essential libssl-dev bc bison flex libelf-dev \
+                                  clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+      - name: 🔧 Auto-Fix nohz_flags Error (Kernel 4.19 Patch)
+        run: |
+          echo "Mencoba memperbaiki error implicit declaration 'nohz_flags' di kernel/sched/core.c..."
+          python3 -c "
+          import re
+          try:
+              with open('kernel/sched/core.c', 'r') as f:
+                  content = f.read()
+              # Wrap baris bermasalah dengan #ifdef CONFIG_NO_HZ_COMMON
+              content = re.sub(
+                  r'(\s+)if \(!atomic_fetch_or\(NOHZ_KICK_MASK, nohz_flags\(cpu\)\)\)',
+                  r'\1#ifdef CONFIG_NO_HZ_COMMON\n\1if (!atomic_fetch_or(NOHZ_KICK_MASK, nohz_flags(cpu)))\n\1#endif',
+                  content
+              )
+              with open('kernel/sched/core.c', 'w') as f:
+                  f.write(content)
+              print('✅ Fix nohz_flags berhasil diterapkan secara otomatis!')
+          except FileNotFoundError:
+              print('⚠️ File kernel/sched/core.c tidak ditemukan, melewatkan fix.')
+          "
+
+      - name: 🛡️ Setup KernelSU (v0.9.5 Stable for 4.19)
+        run: |
+          echo "Mengunduh dan mengintegrasikan KernelSU..."
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+
+      - name: 🛡️ Apply SUSFS Patch (Kernel 4.19 Specific)
+        run: |
+          echo "Mengunduh patch SUSFS resmi untuk kernel 4.19..."
+          curl -sSL https://gitlab.com/simonpunk/susfs4ksu/-/raw/kernel-4.19/kernel_patches/50_add_susfs_in_kernel-4.19.patch -o susfs.patch
+          
+          echo "Mencoba dry-run patch..."
+          if patch -p1 --dry-run < susfs.patch > /dev/null 2>&1; then
+              patch -p1 < susfs.patch
+              echo "✅ Patch SUSFS berhasil diterapkan!"
+          else
+              echo "❌ GAGAL: Patch SUSFS konflik dengan kode di repo Anda."
+              echo "Kemungkinan repo Anda sudah memiliki modifikasi fs/ atau patch scheduler yang bentrok."
+              exit 1
+          fi
+
+      - name: ⚙️ Enable KSU & SUSFS in Defconfig
+        run: |
+          echo "Mengaktifkan CONFIG_KSU dan CONFIG_KSU_SUSFS di ${{ inputs.defconfig }}..."
+          if [ -f "${{ inputs.defconfig }}" ]; then
+              ./scripts/config --file ${{ inputs.defconfig }} --enable KSU
+              ./scripts/config --file ${{ inputs.defconfig }} --enable KSU_SUSFS
+              echo "✅ Konfigurasi KSU dan SUSFS berhasil ditambahkan ke defconfig."
+          else
+              echo "❌ FATAL: File defconfig '${{ inputs.defconfig }}' TIDAK DITEMUKAN!"
+              echo "Silakan periksa input 'defconfig' di workflow ini. Contoh yang benar:"
+              echo "  - arch/arm64/configs/sdm660_defconfig"
+              echo "  - vendor/asus/sdm660-perf_defconfig"
+              exit 1
+          fi
+
+      - name: 🚀 Build Kernel
+        run: |
+          echo "Memulai proses compile kernel..."
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang-14
+          export LD=ld.lld-14
+          export AR=llvm-ar-14
+          export NM=llvm-nm-14
+          export OBJCOPY=llvm-objcopy-14
+          export OBJDUMP=llvm-objdump-14
+          export STRIP=llvm-strip-14
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          
+          # Generate config
+          make -j$(nproc --all) O=out ${{ inputs.defconfig }}
+          # Build
+          make -j$(nproc --all) O=out
+
+      - name: 📦 Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.device_name }}_KSU_SUSFS_Kernel
+          path: |
+            out/arch/arm64/boot/Image
+            out/arch/arm64/boot/Image.gz
+            out/arch/arm64/boot/Image.gz-dtb
+            out/arch/arm64/boot/dts/**/*.dtb
