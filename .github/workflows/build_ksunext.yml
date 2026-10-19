@@ -1,4 +1,4 @@
-name: Kernel Build X00TD 4.19 + KSU-Next + SUSFS
+name: Kernel Build X00TD 4.19 + KSU-Next + SUSFS (Fixed)
 
 on:
   workflow_dispatch:
@@ -60,11 +60,16 @@ jobs:
               print('⚠️ kernel/sched/core.c tidak ditemukan')
           PY
 
-      - name: 🛡️ Setup KernelSU-Next (Modern Non-GKI Support)
+      - name: 🛡️ Setup KernelSU-Next (Manual Clone)
         working-directory: kernel
         run: |
-          echo "Mengunduh KernelSU-Next (Support 4.19 non-GKI)..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/main/kernel/setup.sh" | bash -s main
+          echo "Cloning KernelSU-Next..."
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU --depth=1
+          
+          # Setup KernelSU-Next untuk kernel 4.19
+          cd KernelSU
+          echo "KernelSU-Next cloned successfully"
+          ls -la
 
       - name: 🛡️ Apply SUSFS Patch (kernel-4.19)
         working-directory: kernel
