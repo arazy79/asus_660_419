@@ -1,4 +1,4 @@
-name: Kernel Build X00TD 4.19 skywalker KSU+SUSFS
+name: Tes SUFS
 on:
   workflow_dispatch:
     inputs:
