@@ -1,0 +1,72 @@
+name: Fast Build KSU+SUSFS X00TD
+on:
+  push:
+    branches: [13]
+  workflow_dispatch:
+
+env:
+  ARCH: arm64
+  DEFCONFIG: sdm660_asus_x00td_defconfig
+  CC: clang
+  CXX: clang++
+  LD: ld.lld
+  CLANG_TRIPLE: aarch64-linux-gnu-
+  LLVM: "1"
+  LLVM_IAS: "1"
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: ⬇️ Checkout kernel
+        uses: actions/checkout@v4
+        with:
+          ref: 13
+          fetch-depth: 1
+
+      - name: 🛠️ Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc bison flex libssl-dev libelf-dev \
+            make git zip lz4 ccache
+
+      - name: 🔧 Setup Clang 19
+        run: |
+          mkdir -p ~/clang
+          cd ~/clang
+          wget -q --show-progress https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz
+          tar xf LLVM-19.1.7-Linux-X64.tar.xz --strip-components=1
+          echo "PATH=$HOME/clang/bin:$PATH" >> $GITHUB_ENV
+
+      - name: 📌 Apply SUSFS patch
+        run: |
+          git apply susfs_x00td_419.patch
+          echo "✅ SUSFS applied"
+
+      - name: ⚙️ Defconfig
+        run: |
+          make $DEFCONFIG
+          echo "✅ Config loaded"
+          # Pastikan NO_HZ_FULL aktif
+          grep NO_HZ_FULL .config
+
+      - name: 🔥 Build kernel
+        run: |
+          make -j$(nproc) CC="ccache clang" CXX="ccache clang++"
+
+      - name: 📦 Siapkan hasil
+        if: success()
+        run: |
+          mkdir -p out
+          cp arch/arm64/boot/Image.lz4-dtb out/
+          [ -f arch/arm64/boot/dtbo.img ] && cp arch/arm64/boot/dtbo.img out/
+          ls -lh out/
+
+      - name: 📤 Upload kernel
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: X00TD-KSU-SUSFS
+          path: out/
