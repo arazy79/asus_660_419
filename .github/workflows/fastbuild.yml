@@ -6,7 +6,7 @@ on:
 
 env:
   ARCH: arm64
-  DEFCONFIG: sdm660_asus_x00td_defconfig
+  DEFCONFIG: vendor/asus/X00TD_defconfig
   CC: clang
   CXX: clang++
   LD: ld.lld
