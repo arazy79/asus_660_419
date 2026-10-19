@@ -1,4 +1,4 @@
-name: Kernel Build X00TD 4.19 sukisu
+name: Kernel Build X00TD 4.19 skywalker
 on:
   workflow_dispatch:
     inputs:
@@ -150,9 +150,28 @@ jobs:
             echo "SuSFS kernel patch applied"
           fi
           if [ "$SUSFS_FORK" = "sukisu" ]; then
+            # fix patch dipecah per file: sebagian sudah masuk upstream SukiSU (patch -p1 biasa gagal total kalau ada yang "reversed")
             curl -LSsf "$RAW/Patch/sukisu_ultra_fixed.patch" -o /tmp/sukisu_ultra_fixed.patch
-            (cd drivers/kernelsu && patch -p1 < /tmp/sukisu_ultra_fixed.patch)
-            echo "SukiSU-Ultra fix patch applied"
+            rm -rf /tmp/sfix && mkdir -p /tmp/sfix
+            awk '/^diff --git /{n++} n>0{print > sprintf("/tmp/sfix/part%02d.p", n)}' /tmp/sukisu_ultra_fixed.patch
+            (
+              cd drivers/kernelsu
+              for p in /tmp/sfix/part*.p; do
+                f=$(grep -m1 '^+++ ' "$p" | sed 's#^+++ [ab]/##')
+                rc=0
+                out=$(patch -p1 -N --dry-run < "$p" 2>&1) || rc=$?
+                if [ "$rc" -eq 0 ]; then
+                  patch -p1 -N < "$p"
+                  echo "SukiSU fix applied: $f"
+                elif echo "$out" | grep -q "Reversed (or previously applied)" && ! echo "$out" | grep -q "FAILED"; then
+                  echo "SukiSU fix sudah ada di upstream, skip: $f"
+                else
+                  echo "::error::SukiSU fix patch gagal untuk $f"
+                  echo "$out"
+                  exit 1
+                fi
+              done
+            )
           fi
           curl -LSsf "$RAW/susfs_inline_hook_patches.sh" -o susfs_inline_hook_patches.sh
           bash susfs_inline_hook_patches.sh ./ | tee /tmp/hook.log
