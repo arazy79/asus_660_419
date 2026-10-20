@@ -1,4 +1,4 @@
-name: Build RSKSeven X00TD 4.4 (KSU Next + SuSFS built-in)
+name: Build RSKSeven X00TD 4.4 (KSU Next v3.4.0-legacy + SuSFS)
 on:
   workflow_dispatch:
     inputs:
@@ -11,18 +11,6 @@ on:
         type: choice
         default: 'gcc'
         options: [gcc, default, llvm]
-      ksu_repo:
-        description: 'Sumber KernelSU-Next'
-        required: true
-        default: 'https://github.com/Sidex15/KernelSU-Next'
-      ksu_branch:
-        description: 'Branch/tag KSU Next legacy + SUSFS v2'
-        required: true
-        default: 'legacy-susfs-v2'
-      ksu_dir:
-        description: 'Folder KSU (target symlink drivers/kernelsu)'
-        required: true
-        default: 'KernelSU-Next-v320'
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,6 +20,10 @@ jobs:
       CC: clang
       CROSS_COMPILE: aarch64-linux-gnu-
       CROSS_COMPILE_ARM32: arm-linux-gnueabi-
+      # KITA PIN KE REPO UTAMA & BRANCH LEGACY YANG BENER
+      KSU_REPO: 'https://github.com/KernelSU-Next/KernelSU-Next'
+      KSU_BRANCH: 'legacy'
+      KSU_DIR: 'KernelSU-Next-v340'
     steps:
       - name: Checkout kernel source
         uses: actions/checkout@v4
@@ -40,24 +32,27 @@ jobs:
           ref: rsk-4.4-clean2
           path: kernel
           submodules: false
-      - name: Clone KernelSU-Next legacy + SUSFS v2
+
+      - name: Clone KernelSU-Next v3.4.0-legacy
         working-directory: kernel
-        env:
-          KSU_REPO: ${{ github.event.inputs.ksu_repo }}
-          KSU_BRANCH: ${{ github.event.inputs.ksu_branch }}
-          KSU_DIR: ${{ github.event.inputs.ksu_dir }}
         run: |
           set -e
+          echo "=== Clone $KSU_REPO ($KSU_BRANCH) -> $KSU_DIR ==="
           rm -rf "$KSU_DIR"
           git clone --depth 1 -b "$KSU_BRANCH" "$KSU_REPO" "$KSU_DIR"
+          
+          # Cek apakah Kconfig ada
           if [ ! -f "$KSU_DIR/kernel/Kconfig" ]; then
-            echo "::error::$KSU_DIR/kernel/Kconfig tidak ada"
+            echo "::error::$KSU_DIR/kernel/Kconfig tidak ada. Cek repo/branch."
             exit 1
           fi
+          
+          # Bikin symlink drivers/kernelsu
           if [ ! -e drivers/kernelsu/Kconfig ]; then
             ln -sfn "../$KSU_DIR/kernel" drivers/kernelsu
           fi
           echo "drivers/kernelsu -> $(readlink -f drivers/kernelsu)"
+
       - name: Add GCC fallback for KernelSU-Next attributes
         working-directory: kernel
         run: |
@@ -88,6 +83,7 @@ jobs:
           else
             echo "Fallback sudah ada"
           fi
+
       - name: Select toolchain
         id: tc
         env:
@@ -107,6 +103,7 @@ jobs:
               echo "key=" >> "$GITHUB_OUTPUT"
               ;;
           esac
+
       - name: Cache toolchain
         id: tc_cache
         if: ${{ github.event.inputs.toolchain != 'default' }}
@@ -114,12 +111,14 @@ jobs:
         with:
           path: ${{ steps.tc.outputs.dir }}
           key: ${{ steps.tc.outputs.key }}
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick libncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
           sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
           sudo apt-get install -y clang llvm lld zstd wget xz-utils
+
       - name: Fetch toolchain
         if: ${{ github.event.inputs.toolchain != 'default' && steps.tc_cache.outputs.cache-hit != 'true' }}
         env:
@@ -136,6 +135,7 @@ jobs:
             tar -xf gcc.tar.xz
             rm -f gcc.tar.xz
           fi
+
       - name: Setup toolchain environment
         env:
           TOOLCHAIN: ${{ github.event.inputs.toolchain }}
@@ -166,10 +166,12 @@ jobs:
               ;;
           esac
           echo "TC_KCFLAGS=-w -D_LINUX -D__nocfi=" >> "$GITHUB_ENV"
+
       - name: Debug environment
         run: |
           echo "TC_MAKE_ARGS=$TC_MAKE_ARGS"
           echo "TC_KCFLAGS=$TC_KCFLAGS"
+
       - name: Make defconfig (KSU + SuSFS)
         working-directory: kernel
         run: |
@@ -189,13 +191,16 @@ jobs:
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y"
           } >> .config
           yes "" | make ARCH=${{ env.ARCH }} $TC_MAKE_ARGS oldconfig
+          
           echo "=== Config KSU/SUSFS ==="
           grep -E "CONFIG_KSU|CONFIG_THREAD_INFO_IN_TASK|CONFIG_KPROBES" .config || true
+
       - name: Build kernel
         working-directory: kernel
         run: |
           echo "CPU cores: $(nproc)"
           make ARCH=${{ env.ARCH }} $TC_MAKE_ARGS KCFLAGS="$TC_KCFLAGS" -j"$(nproc)"
+
       - name: Build DTB + Image.gz-dtb
         working-directory: kernel
         run: |
@@ -209,6 +214,7 @@ jobs:
             cat arch/arm64/boot/Image.gz "$DTB" > arch/arm64/boot/Image.gz-dtb
           fi
           ls -lh arch/arm64/boot/Image.gz arch/arm64/boot/Image.gz-dtb
+
       - name: Verify KSU + SuSFS
         working-directory: kernel
         continue-on-error: true
@@ -216,12 +222,14 @@ jobs:
           grep -E "CONFIG_KSU" .config || true
           grep -qi "susfs" System.map && echo "OK: susfs ada" || echo "::warning::susfs tidak ada"
           grep -qi "ksu" System.map && echo "OK: ksu ada" || echo "::warning::ksu tidak ada"
+
       - name: Upload Image.gz-dtb
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-RSKSeven-X00TD-4.4-${{ github.event.inputs.toolchain }}-${{ github.run_id }}
+          name: Kernel-RSKSeven-X00TD-4.4-v340-${{ github.event.inputs.toolchain }}-${{ github.run_id }}
           path: kernel/arch/arm64/boot/Image.gz-dtb
+
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
