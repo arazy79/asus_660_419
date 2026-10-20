@@ -12,7 +12,7 @@ on:
         default: 'gcc'
         options: [gcc, default, llvm]
       ksu_repo:
-        description: 'Sumber KernelSU-Next (harus punya dukungan SUSFS v2)'
+        description: 'Sumber KernelSU-Next'
         required: true
         default: 'https://github.com/Sidex15/KernelSU-Next'
       ksu_branch:
@@ -20,7 +20,7 @@ on:
         required: true
         default: 'legacy-susfs-v2'
       ksu_dir:
-        description: 'Nama folder KSU (harus sama dengan target symlink drivers/kernelsu)'
+        description: 'Folder KSU (target symlink drivers/kernelsu)'
         required: true
         default: 'KernelSU-Next-v320'
 jobs:
@@ -49,26 +49,47 @@ jobs:
           KSU_DIR: ${{ github.event.inputs.ksu_dir }}
         run: |
           set -e
-          echo "=== Clone $KSU_REPO ($KSU_BRANCH) -> $KSU_DIR ==="
           rm -rf "$KSU_DIR"
           git clone --depth 1 -b "$KSU_BRANCH" "$KSU_REPO" "$KSU_DIR"
-          echo "=== Cek isi KSU ==="
-          ls -la "$KSU_DIR/kernel" | head -20
           if [ ! -f "$KSU_DIR/kernel/Kconfig" ]; then
-            echo "::error::$KSU_DIR/kernel/Kconfig tidak ada. Cek repo/branch KSU."
+            echo "::error::$KSU_DIR/kernel/Kconfig tidak ada"
             exit 1
           fi
-          echo "=== Pastikan symlink drivers/kernelsu resolve ==="
           if [ ! -e drivers/kernelsu/Kconfig ]; then
-            echo "::warning::symlink drivers/kernelsu tidak resolve, buat manual"
             ln -sfn "../$KSU_DIR/kernel" drivers/kernelsu
           fi
-          if [ ! -e drivers/kernelsu/Kconfig ]; then
-            echo "::error::drivers/kernelsu/Kconfig tetap tidak ada setelah symlink"
-            ls -la drivers/kernelsu || true
-            exit 1
-          fi
           echo "drivers/kernelsu -> $(readlink -f drivers/kernelsu)"
+
+      - name: Add GCC fallback for KernelSU-Next attributes
+        working-directory: kernel
+        run: |
+          set -e
+          if ! grep -q '__nocfi' include/linux/compiler-gcc.h; then
+            cat >> include/linux/compiler-gcc.h <<'EOF'
+
+          /* KernelSU-Next compatibility: Clang-only attributes on GCC */
+          #ifndef __clang__
+          #ifndef __nocfi
+          #define __nocfi
+          #endif
+          #ifndef __noscs
+          #define __noscs
+          #endif
+          #ifndef __no_sanitize_address
+          #define __no_sanitize_address
+          #endif
+          #ifndef __no_sanitize_thread
+          #define __no_sanitize_thread
+          #endif
+          #ifndef __no_sanitize_undefined
+          #define __no_sanitize_undefined
+          #endif
+          #endif /* !__clang__ */
+          EOF
+            echo "Fallback __nocfi ditambahkan"
+          else
+            echo "Fallback sudah ada"
+          fi
 
       - name: Select toolchain
         id: tc
@@ -103,8 +124,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick libncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
           sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-          sudo apt-get install -y clang llvm lld
-          sudo apt-get install -y zstd wget xz-utils
+          sudo apt-get install -y clang llvm lld zstd wget xz-utils
 
       - name: Fetch toolchain
         if: ${{ github.event.inputs.toolchain != 'default' && steps.tc_cache.outputs.cache-hit != 'true' }}
@@ -141,10 +161,10 @@ jobs:
                 if [ -f "$TC/bin/${p}gcc" ]; then prefix="$p"; break; fi
               done
               if [ -z "$prefix" ]; then
-                echo "::error::gcc aarch64 tidak ditemukan di $TC/bin"
+                echo "::error::gcc aarch64 tidak ditemukan"
                 exit 1
               fi
-              echo "::notice::Menggunakan prefix: $prefix"
+              echo "::notice::Prefix: $prefix"
               echo "$TC/bin" >> "$GITHUB_PATH"
               echo "TC_MAKE_ARGS=CROSS_COMPILE=$TC/bin/$prefix CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
               ;;
@@ -152,18 +172,14 @@ jobs:
               echo "TC_MAKE_ARGS=CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
               ;;
           esac
-          # -D_LINUX: wajib untuk tree ini supaya include/acpi/platform/acenv.h
-          # memilih aclinux.h (yang mendefinisikan ACPI_USE_SYSTEM_CLIBRARY dan u32).
-          # Tanpa ini, ACPI gagal compile dengan "unknown type name 'u32'".
-          echo "TC_KCFLAGS=-w -D_LINUX" >> "$GITHUB_ENV"
+          # -D_LINUX: untuk ACPI (acenv.h -> aclinux.h)
+          # -D__nocfi=: lapisan kedua untuk KernelSU-Next (selain fallback di compiler-gcc.h)
+          echo "TC_KCFLAGS=-w -D_LINUX -D__nocfi=" >> "$GITHUB_ENV"
 
       - name: Debug environment
         run: |
           echo "TC_MAKE_ARGS=$TC_MAKE_ARGS"
           echo "TC_KCFLAGS=$TC_KCFLAGS"
-          which aarch64-linux-gnu-gcc || true
-          which clang || true
-          ls -la "$HOME/gcc-arm64/bin" 2>/dev/null | head -20 || true
 
       - name: Make defconfig (KSU + SuSFS)
         working-directory: kernel
@@ -184,8 +200,7 @@ jobs:
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y"
           } >> .config
           yes "" | make ARCH=${{ env.ARCH }} $TC_MAKE_ARGS oldconfig
-          echo "=== Config KSU/SUSFS ==="
-          grep -E "CONFIG_KSU|CONFIG_THREAD_INFO_IN_TASK|CONFIG_KPROBES" .config || true
+          grep -E "CONFIG_KSU" .config || true
 
       - name: Build kernel
         working-directory: kernel
@@ -199,32 +214,21 @@ jobs:
           set -e
           make ARCH=${{ env.ARCH }} $TC_MAKE_ARGS dtbs
           if [ ! -f arch/arm64/boot/Image.gz-dtb ]; then
-            echo "Image.gz-dtb belum ada, gabungkan manual"
             DTB=$(find arch/arm64/boot/dts -iname "*x00td*.dtb" | head -1)
-            if [ -z "$DTB" ]; then DTB=$(find arch/arm64/boot/dts -name "sdm636.dtb" | head -1); fi
-            if [ -z "$DTB" ]; then DTB=$(find arch/arm64/boot/dts -name "sdm660.dtb" | head -1); fi
-            if [ -z "$DTB" ]; then echo "::error::DTB tidak ditemukan"; exit 1; fi
+            [ -z "$DTB" ] && DTB=$(find arch/arm64/boot/dts -name "sdm636.dtb" | head -1)
+            [ -z "$DTB" ] && DTB=$(find arch/arm64/boot/dts -name "sdm660.dtb" | head -1)
+            [ -z "$DTB" ] && { echo "::error::DTB tidak ditemukan"; exit 1; }
             cat arch/arm64/boot/Image.gz "$DTB" > arch/arm64/boot/Image.gz-dtb
           fi
           ls -lh arch/arm64/boot/Image.gz arch/arm64/boot/Image.gz-dtb
 
-      - name: Verify KSU + SuSFS di build output
+      - name: Verify KSU + SuSFS
         working-directory: kernel
         continue-on-error: true
         run: |
-          echo "=== CONFIG_KSU di .config ==="
           grep -E "CONFIG_KSU" .config || true
-          echo "=== Simbol KSU/SuSFS di System.map ==="
-          if grep -qi "susfs" System.map; then
-            echo "OK: simbol susfs ada"
-          else
-            echo "::warning::simbol susfs TIDAK ada — cek config / source KSU"
-          fi
-          if grep -qi "ksu" System.map; then
-            echo "OK: simbol ksu ada"
-          else
-            echo "::warning::simbol ksu TIDAK ada"
-          fi
+          grep -qi "susfs" System.map && echo "OK: susfs ada" || echo "::warning::susfs tidak ada"
+          grep -qi "ksu" System.map && echo "OK: ksu ada" || echo "::warning::ksu tidak ada"
 
       - name: Upload Image.gz-dtb
         if: success()
@@ -240,5 +244,4 @@ jobs:
           name: build-failure-log-${{ github.run_id }}
           path: |
             kernel/.config
-            kernel/**/*.log
           if-no-files-found: ignore
