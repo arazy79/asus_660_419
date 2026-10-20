@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       repo:
-        description: 'Repository kernel (format owner/repo, JANGAN full URL). Kosongkan = pakai default arazy79/android-kernel-tes-4.19'
+        description: 'Repository kernel (format owner/repo, JANGAN full URL). Kosongkan = pakai default arazy79/asus_660_419'
         required: false
         default: 'arazy79/asus_660_419'
       branch:
@@ -59,14 +59,16 @@ jobs:
       CROSS_COMPILE: aarch64-linux-gnu-
       CROSS_COMPILE_ARM32: arm-linux-gnueabi-
       CCACHE_DIR: ${{ github.workspace }}/kernel/out/.ccache
+      SUSFS_PATCH: susfs_patch_to_4.4.patch
     steps:
       - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.inputs.repo || 'arazy79/android-kernel-tes-4.19' }}
-          ref: ${{ github.event.inputs.branch || 'fastcharge-test' }}
+          repository: ${{ github.event.inputs.repo || 'arazy79/asus_660_419' }}
+          ref: ${{ github.event.inputs.branch || '4.4rsksvn' }}
           path: kernel
           submodules: recursive
+
       - name: Setup KernelSU
         if: ${{ github.event.inputs.enable_ksu == 'true' }}
         working-directory: kernel
@@ -115,6 +117,25 @@ jobs:
             echo "::error::drivers/kernelsu/Kconfig tidak ada, setup KernelSU gagal"
             exit 1
           fi
+
+      - name: Clean previous SuSFS artifacts
+        if: ${{ github.event.inputs.enable_ksu == 'true' && github.event.inputs.enable_susfs == 'true' }}
+        working-directory: kernel
+        run: |
+          set -e
+          echo "=== Hapus file SuSFS yang mungkin tertinggal (penyebab error 'already exists') ==="
+          rm -f fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h
+          echo "=== Restore file tracked yang mungkin sudah terlanjur partially-patched ==="
+          # Restore HANYA file yang disentuh patch SuSFS. File KSU (drivers/kernelsu) TIDAK disentuh.
+          git checkout -- \
+            fs/Makefile fs/namei.c fs/namespace.c fs/notify/fdinfo.c \
+            fs/proc/base.c fs/proc/cmdline.c fs/proc/fd.c fs/proc/task_mmu.c \
+            fs/proc_namespace.c fs/readdir.c fs/stat.c fs/statfs.c fs/super.c \
+            kernel/kallsyms.c kernel/sys.c mm/memory.c security/selinux/avc.c \
+            2>/dev/null || true
+          echo "=== Cleanup done. Status workspace: ==="
+          git status --short | head -50 || true
+
       - name: Apply SuSFS patch + SuSFS inline hooks
         if: ${{ github.event.inputs.enable_ksu == 'true' && github.event.inputs.enable_susfs == 'true' }}
         working-directory: kernel
@@ -125,17 +146,35 @@ jobs:
           # script hook & fix patch diambil dari commit yang dipin (bukan branch), biar build bisa diulang persis
           BUILDER_SHA=dcd789634247c77d8549a42aef232c680a905585
           RAW="https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/$BUILDER_SHA/Patches"
-          if [ ! -f susfs_x00td_419.patch ]; then
-            echo "::error::susfs_x00td_419.patch tidak ada di root repo (branch ${{ github.event.inputs.branch || 'fastcharge-test' }})"
+
+          # ---- Cek patch 4.4 ada di root repo ----
+          if [ ! -f "$SUSFS_PATCH" ]; then
+            echo "::error::$SUSFS_PATCH tidak ada di root repo (branch ${{ github.event.inputs.branch || '4.4rsksvn' }})"
+            echo "Pastikan file sudah di-commit & push ke root repo."
             exit 1
           fi
-          if git apply -R --check susfs_x00td_419.patch 2>/dev/null; then
+
+          # ---- Cek apakah patch sudah ter-apply (reverse check) ----
+          if patch -p1 -R --dry-run -f < "$SUSFS_PATCH" >/dev/null 2>&1; then
             echo "SuSFS kernel patch sudah ter-apply, skip"
           else
-            git apply --check susfs_x00td_419.patch
-            git apply --whitespace=nowarn susfs_x00td_419.patch
+            echo "::group::Dry-run SuSFS 4.4 patch"
+            # Dry-run dulu biar kalau ada hunk mismatch, langsung kelihatan file + hunk-nya
+            if ! patch -p1 --dry-run -f < "$SUSFS_PATCH" 2>&1 | tee /tmp/susfs_dryrun.log; then
+              echo "::error::SuSFS patch GAGAL dry-run. Cek log di atas untuk hunk yang mismatch."
+              exit 1
+            fi
+            if grep -qE "Hunk #[0-9]+ FAILED|Reversed \(or previously applied\) patch" /tmp/susfs_dryrun.log; then
+              echo "::error::Ada hunk yang FAILED atau patch terdeteksi reversed. Cek log di atas."
+              exit 1
+            fi
+            echo "=== Dry-run OK, applying ==="
+            echo "::endgroup::"
+            patch -p1 --forward -f < "$SUSFS_PATCH"
             echo "SuSFS kernel patch applied"
           fi
+
+          # ---- SukiSU-only fix patch ----
           if [ "$SUSFS_FORK" = "sukisu" ]; then
             # fix patch dipecah per file. runtime/ksud.c ditangani terpisah: konteks hunk-nya sudah geser di upstream
             # (patch salah deteksi "reversed"), jadi panggilan selinux_hide dihapus langsung.
@@ -166,17 +205,22 @@ jobs:
               done
             )
           fi
+
+          # ---- SuSFS inline hooks (KSU hook ke fs/exec.c dll) ----
           curl -LSsf "$RAW/susfs_inline_hook_patches.sh" -o susfs_inline_hook_patches.sh
           bash susfs_inline_hook_patches.sh ./ | tee /tmp/hook.log
           rm -f susfs_inline_hook_patches.sh
           if grep -qiE "failed|warning" /tmp/hook.log; then
             echo "::warning::script hook inline ngelaporin failed/warning, cek log di atas"
           fi
+
+          # ---- Verifikasi hook KSU + SuSFS masuk ----
           for f in fs/exec.c fs/open.c fs/read_write.c fs/stat.c drivers/input/input.c kernel/reboot.c kernel/sys.c; do
             grep -q "ksu_" "$f" || { echo "::error::hook KSU tidak masuk di $f"; exit 1; }
           done
           grep -q "CONFIG_KSU_SUSFS" fs/namespace.c || { echo "::error::hook SuSFS tidak ada di fs/namespace.c"; exit 1; }
           echo "OK: SuSFS dan hook KSU terpasang"
+
       - name: Select toolchain
         id: tc
         env:
@@ -200,6 +244,7 @@ jobs:
               ;;
           esac
           echo "Toolchain dipilih: $TOOLCHAIN"
+
       - name: Restore ccache & build cache
         uses: actions/cache@v4
         with:
@@ -209,6 +254,7 @@ jobs:
           key: ${{ steps.tc.outputs.out_prefix }}${{ github.run_id }}
           restore-keys: |
             ${{ steps.tc.outputs.out_prefix }}
+
       - name: Cache toolchain
         id: tc_cache
         if: ${{ github.event.inputs.toolchain != 'default' }}
@@ -216,6 +262,7 @@ jobs:
         with:
           path: ${{ steps.tc.outputs.dir }}
           key: ${{ steps.tc.outputs.key }}
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -223,6 +270,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
           sudo apt-get install -y clang llvm lld
           sudo apt-get install -y zstd wget xz-utils
+
       - name: Fetch toolchain
         if: ${{ github.event.inputs.toolchain != 'default' && steps.tc_cache.outputs.cache-hit != 'true' }}
         env:
@@ -251,6 +299,7 @@ jobs:
               exit 1
             fi
           fi
+
       - name: Setup toolchain environment
         env:
           TOOLCHAIN: ${{ github.event.inputs.toolchain }}
@@ -288,11 +337,12 @@ jobs:
           else
             echo "TC_KCFLAGS=-Wno-error" >> "$GITHUB_ENV"
           fi
+
       - name: Debug - Check files
         run: |
           echo "=== Repo & branch ==="
-          echo "Repo  : ${{ github.event.inputs.repo || 'arazy79/android-kernel-tes-4.19' }}"
-          echo "Branch: ${{ github.event.inputs.branch || 'fastcharge-test' }}"
+          echo "Repo  : ${{ github.event.inputs.repo || 'arazy79/asus_660_419' }}"
+          echo "Branch: ${{ github.event.inputs.branch || '4.4rsksvn' }}"
           echo "=== Kernel directory contents ==="
           ls -la kernel/
           echo "=== Defconfig exists? ==="
@@ -302,9 +352,11 @@ jobs:
           echo "=== Toolchain ==="
           echo "TC_MAKE_ARGS=$TC_MAKE_ARGS"
           echo "TC_KCFLAGS=$TC_KCFLAGS"
+
       - name: Prepare output directory
         run: |
           mkdir -p kernel/out
+
       - name: Make defconfig
         working-directory: kernel
         env:
@@ -337,6 +389,7 @@ jobs:
             echo "KernelSU: OFF"
           fi
           yes "" | make ARCH=${{ env.ARCH }} O=out $TC_MAKE_ARGS oldconfig
+
       - name: Build kernel
         working-directory: kernel
         run: |
@@ -344,21 +397,13 @@ jobs:
           export CXX="ccache clang++"
           echo "CPU cores: $(nproc)"
           make ARCH=${{ env.ARCH }} O=out $TC_MAKE_ARGS KCFLAGS="$TC_KCFLAGS" -j"$(nproc)"
+
       - name: Show compiler used
         working-directory: kernel
         continue-on-error: true
         run: |
           grep -E "LINUX_COMPILER|UTS_VERSION" out/include/generated/compile.h || true
-      - name: Verify close_range ada di kernel hasil build
-        working-directory: kernel
-        continue-on-error: true
-        run: |
-          if grep -E "sys_close_range" out/System.map; then
-            echo "OK: sys_close_range ada di System.map"
-          else
-            echo "::warning::sys_close_range TIDAK ada di System.map, hotspot belum akan jalan"
-            exit 1
-          fi
+
       - name: Verify KernelSU di kernel hasil build
         if: ${{ github.event.inputs.enable_ksu == 'true' }}
         working-directory: kernel
@@ -381,6 +426,7 @@ jobs:
               exit 1
             fi
           fi
+
       - name: Build DTB + Image.gz-dtb
         working-directory: kernel
         run: |
@@ -405,18 +451,21 @@ jobs:
           cat out/arch/arm64/boot/Image.gz "$DTB" > out/arch/arm64/boot/Image.gz-dtb
           echo "=== Final size ==="
           ls -lh out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image.gz-dtb
+
       - name: Check build result
         run: |
           ls -la kernel/out/arch/arm64/boot/
+
       - name: Debug CONFIG_KSU (on failure)
         if: ${{ failure() && github.event.inputs.enable_ksu == 'true' }}
         working-directory: kernel
         run: |
           grep -n "CONFIG_KSU" out/.config || echo "CONFIG_KSU tidak ada di out/.config"
+
       - name: Upload Image.gz-dtb
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Build-X00TD-SKYWALKER-4.19-${{ github.event.inputs.toolchain }}-${{ github.event.inputs.enable_ksu == 'true' && (github.event.inputs.enable_susfs == 'true' && format('KSU-SUSFS-{0}', github.event.inputs.susfs_ksu_fork) || 'KSU') || 'NOKSU' }}-${{ github.run_id }}
+          name: Kernel-Build-X00TD-SKYWALKER-4.4-${{ github.event.inputs.toolchain }}-${{ github.event.inputs.enable_ksu == 'true' && (github.event.inputs.enable_susfs == 'true' && format('KSU-SUSFS-{0}', github.event.inputs.susfs_ksu_fork) || 'KSU') || 'NOKSU' }}-${{ github.run_id }}
           path: |
             kernel/out/arch/arm64/boot/Image.gz-dtb
