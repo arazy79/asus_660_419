@@ -10,26 +10,6 @@
  * GNU General Public License for more details.
  */
 
-gpio@c300 {
-	qcom,mode = <0x01>;
-	qcom,pull = <0x05>;
-	qcom,vin-sel = <0x00>;
-	qcom,src-sel = <0x00>;
-	qcom,invert = <0x00>;
-	qcom,master-en = <0x01>;
-	status = "ok";
-	};
-
-gpio@c200 {
-	qcom,mode = <0x01>;
-	qcom,pull = <0x05>;
-	qcom,vin-sel = <0x00>;
-	qcom,src-sel = <0x00>;
-	qcom,invert = <0x00>;
-	qcom,master-en = <0x01>;
-	status = "ok";
-	};
-
 &pm660l_gpios {
 	gpio@c400 {
 		status = "ok";
