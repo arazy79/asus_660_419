@@ -8,13 +8,11 @@ on:
         required: false
         default: 'arazy79/asus_660_419'
         type: string
-
       target_branch:
         description: 'Branch target (contoh: 4.4rsksvn)'
         required: true
         default: '4.4rsksvn'
         type: string
-
       push_changes:
         description: 'Push hasil cleanup ke branch target?'
         required: true
@@ -25,7 +23,7 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # PENTING: izin push
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,25 +33,26 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Hapus folder KernelSU & sisa lama
+      - name: Hapus folder KernelSU, KernelSU-Next, dan Symlink
         run: |
           set -e
-          echo "=== Cek apa yang ada ==="
-          if [ -d KernelSU ]; then
-            ls -ld KernelSU
-          else
-            echo "Folder KernelSU tidak ada (skip)"
-          fi
-
-          echo "=== Hapus folder KernelSU ==="
+          echo "=== Sebelum dihapus ==="
+          ls -la | grep -i kernelsu || echo "Tidak ada folder KernelSU"
+          
+          echo "=== Hapus folder KernelSU & KernelSU-Next ==="
           rm -rf KernelSU
-
+          rm -rf KernelSU-Next-*
+          
+          echo "=== Hapus symlink/file yang mengandung nama KernelSU ==="
+          # Ini buat ngehapus symlink aneh yang ada panahnya
+          find . -maxdepth 1 -iname "*kernelsu*" -exec rm -rf {} + || true
+          
           echo "=== Bersihkan Makefile ==="
           sed -i '/kernelsu/d' drivers/Makefile 2>/dev/null || true
-
+          
           echo "=== Bersihkan Kconfig ==="
           sed -i '/drivers\/kernelsu\/Kconfig/d' drivers/Kconfig 2>/dev/null || true
-
+          
           echo "=== Status perubahan ==="
           git status
           git diff
@@ -67,7 +66,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "✅ Tidak ada perubahan — sudah bersih"
           else
-            git commit -m "Cleanup: hapus folder KernelSU & sisa lama"
+            git commit -m "Cleanup: hapus folder KernelSU, Next, & symlink"
             git push origin HEAD:${{ inputs.target_branch }}
             echo "✅ Berhasil di-push ke ${{ inputs.target_branch }}!"
           fi
