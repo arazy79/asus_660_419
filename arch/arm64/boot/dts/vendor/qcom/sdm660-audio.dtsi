@@ -42,17 +42,10 @@
 		pinctrl-1 = <&lpi_cdc_reset_sleep>;
 		qcom,lpi-gpios;
 	};
-
-	pinctrl-1 = <&lpi_cdc_reset_sleep>;
-	qcom,lpi-gpios;
 };
-                          ← TAMBAH 3 baris DI BAWAH ini:
-};                        ← (tutup &soc)
-                          ← (baris kosong)
-&q6core {                 ← (buka kembali &q6core untuk sound)
-	
-int_codec: sound {
-	
+
+&q6core {
+
 	int_codec: sound {
 		status = "disabled";
 		compatible = "qcom,sdm660-asoc-snd";
