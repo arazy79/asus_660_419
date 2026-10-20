@@ -35,14 +35,8 @@
 #define	START_REPORT_BAT_TEMPRATURE	620
 #endif
 
-static unsigned int forced_current = 2500;
-module_param(forced_current, uint, S_IWUSR | S_IRUGO);
-
 #ifdef CONFIG_FORCE_FAST_CHARGE
 #include <linux/fastchg.h>
-static bool const_icl_enable = true;
-module_param(const_icl_enable, bool, 0644);
-#define CONST_ICL_UA 2500000
 #endif
 
 #define smblib_err(chg, fmt, ...)		\
@@ -2279,11 +2273,9 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 
 	chg->system_temp_level = val->intval;
 
-#ifndef CONFIG_FORCE_FAST_CHARGE
 	if (chg->system_temp_level == chg->thermal_levels)
 		return vote(chg->chg_disable_votable,
 			THERMAL_DAEMON_VOTER, true, 0);
-#endif
 
 	vote(chg->chg_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
 //	if (chg->system_temp_level == 0)
@@ -2826,16 +2818,7 @@ int smblib_get_prop_pd_allowed(struct smb_charger *chg,
 int smblib_get_prop_input_current_settled(struct smb_charger *chg,
 					  union power_supply_propval *val)
 {
-#ifdef CONFIG_FORCE_FAST_CHARGE
-	if (const_icl_enable && asus_flow_processing) {
-		val->intval = CONST_ICL_UA;
-		return 0;
-	} else {
-#endif
 	return smblib_get_charge_param(chg, &chg->param.icl_stat, &val->intval);
-#ifdef CONFIG_FORCE_FAST_CHARGE
-	}
-#endif
 }
 
 #define HVDCP3_STEP_UV	200000
@@ -3929,7 +3912,7 @@ void asus_chg_flow_work(struct work_struct *work)
 {
 	const struct apsd_result *apsd_result;
 	int rc;
-	u8 set_icl = ICL_2500mA;
+	u8 set_icl;
 	u8 USBIN_1_cc;
 	if (!asus_get_prop_usb_present(smbchg_dev)) {
 		smblib_uusb_removal(smbchg_dev);
@@ -3956,6 +3939,7 @@ void asus_chg_flow_work(struct work_struct *work)
 /* Huaqin add for ZQL1650-71 before BC1.2 500mA before adapter id 1000mA by fangaijun at 2018/4/4 end */
 #endif
 /* Huaqin add for ZQL1650-1287 factory version remove before BC1.2 500mA before adapter id 1000mA by fangaijun at 2018/5/8 end */
+			set_icl = ICL_4000mA;
 		rc = smblib_masked_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG,
 			USBIN_CURRENT_LIMIT_MASK, set_icl);
 		if (rc < 0)
@@ -3967,6 +3951,7 @@ void asus_chg_flow_work(struct work_struct *work)
 	case CDP_CHARGER_BIT:
 		printk("asus_chg_flow_work enter CDP_CHARGER_BIT\n");
 /* Huaqin modify for ZQL1650 modify CDP charging current by fangaijun at 2018/04/18 start*/
+			set_icl = ICL_4000mA;
 /* Huaqin modify for ZQL1650 modify CDP charging current by fangaijun at 2018/04/18 end*/
 		rc = smblib_masked_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG,     //reg=1370   bit7-bit0=USBIN_CURRENT_LIMIT
 			USBIN_CURRENT_LIMIT_MASK, set_icl);
@@ -3985,7 +3970,8 @@ void asus_chg_flow_work(struct work_struct *work)
 		smblib_asus_monitor_start(smbchg_dev, 0);		//ASUS BSP Austin_T: Jeita start
 		break;
 	case OCP_CHARGER_BIT:
-		printk("asus_chg_flow_work enter OCP_CHARGER_BIT");                                                                                                                                //reg=1370 bit7-bit0
+		printk("asus_chg_flow_work enter OCP_CHARGER_BIT");
+			set_icl = ICL_4000mA;                                                                                                                                 //reg=1370 bit7-bit0
 		rc = smblib_masked_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG,
 			USBIN_CURRENT_LIMIT_MASK, set_icl);
 		if (rc < 0)
@@ -4070,12 +4056,12 @@ void asus_insertion_initial_settings(struct smb_charger *chg)
 #endif
 /* Huaqin add for ZQL1650-1287 factory version remove before BC1.2 500mA before adapter id 1000mA by fangaijun at 2018/5/8 end */
 //No.1
-	rc = smblib_write(chg, PRE_CHARGE_CURRENT_CFG_REG, ICL_2500mA);                                        //reg=1060    0x03   75mA  gaiwei  0x06  150mA
+	rc = smblib_write(chg, PRE_CHARGE_CURRENT_CFG_REG, 0x06);                                        //reg=1060    0x03   75mA  gaiwei  0x06  150mA
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't set default PRE_CHARGE_CURRENT_CFG_REG rc=%d\n", rc);
 	}
 //No.2
-	rc = smblib_write(chg, FAST_CHARGE_CURRENT_CFG_REG, ICL_2500mA);                                      //reg=1061      0x38 1475mA  gaiwei  0x28 1000mA
+	rc = smblib_write(chg, FAST_CHARGE_CURRENT_CFG_REG, 0x28);                                      //reg=1061      0x38 1475mA  gaiwei  0x28 1000mA
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't set default FAST_CHARGE_CURRENT_CFG_REG rc=%d\n", rc);
 	}
@@ -4144,7 +4130,7 @@ void asus_insertion_initial_settings(struct smb_charger *chg)
 	if (rc < 0)
 		printk("%s: Couldn't read fast_CURRENT_LIMIT_CFG_REG\n", __func__);
 	rc = smblib_masked_write(chg, USBIN_CURRENT_LIMIT_CFG_REG,
-			USBIN_CURRENT_LIMIT_MASK, ICL_2500mA);
+			USBIN_CURRENT_LIMIT_MASK, 0x14);
 	if (rc < 0)
 			CHG_DBG_E("%s: Failed to set USBIN_CURRENT_LIMIT\n", __func__);
 	rc = smblib_read(chg, USBIN_CURRENT_LIMIT_CFG_REG, &USBIN_cc);   //reg=1370    usb in current
@@ -4748,11 +4734,11 @@ static void smblib_force_legacy_icl(struct smb_charger *chg, int pst)
 		 */
 		if (!is_client_vote_enabled(chg->usb_icl_votable,
 								USB_PSY_VOTER))
-			vote(chg->usb_icl_votable, USB_PSY_VOTER, true, 2500000);
+			vote(chg->usb_icl_votable, USB_PSY_VOTER, true, 100000);
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, false, 0);
 		break;
 	case POWER_SUPPLY_TYPE_USB_CDP:
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2500000);
+		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 3300000);
 		break;
 	case POWER_SUPPLY_TYPE_USB_DCP:
 #ifdef CONFIG_MACH_ASUS_SDM660
@@ -4761,7 +4747,7 @@ static void smblib_force_legacy_icl(struct smb_charger *chg, int pst)
 			printk("%s: Couldn't read fast_CURRENT_LIMIT_CFG_REG\n", __func__);
 #endif
 		
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2500000);
+		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 3300000);
 
 #ifdef CONFIG_MACH_ASUS_SDM660
 		rc = smblib_read(chg, USBIN_CURRENT_LIMIT_CFG_REG, &USBIN_1_cc);   //reg=1370
@@ -4774,11 +4760,11 @@ static void smblib_force_legacy_icl(struct smb_charger *chg, int pst)
 		 * limit ICL to 100mA, the USB driver will enumerate to check
 		 * if this is a SDP and appropriately set the current
 		 */
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2500000);
+		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 3300000);
 		break;
 	case POWER_SUPPLY_TYPE_USB_HVDCP:
 	case POWER_SUPPLY_TYPE_USB_HVDCP_3:
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2500000);
+		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 3300000);
 		break;
 	default:
 		smblib_err(chg, "Unknown APSD %d; forcing suspend\n", pst);
