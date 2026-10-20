@@ -1,0 +1,66 @@
+power: supply: qcom: smb-reg: Fix incorrect QC2.0 pulse count enum values
+Guru Das Srinageshrsuntk
+Guru Das Srinagesh
+authored and
+rsuntk
+committed
+3 weeks ago
+Verified
+power: supply: qcom: Fix wrong logic in maximum limit
+Jack Wursuntk
+Jack Wu
+authored and
+rsuntk
+committed
+3 weeks ago
+Verified
+power: supply: qcom: qpnp-qg: Fix incorrect vbatt parameter for good ocv re-trigger
+Jack Wursuntk
+Jack Wu
+authored and
+rsuntk
+committed
+3 weeks ago
+Verified
+power: supply: qcom: qpnp-qg: Adjust QG_SOC when CC_SOC exceeds SOC_FULL
+Jack Wursuntk
+Jack Wu
+authored and
+rsuntk
+committed
+3 weeks ago
+Verified
+Commits on Sep 26, 2026
+power: supply: qcom: qpnp-qg: Fix the 1% resolution limit of charge_counter
+Jack Wursuntk
+Jack Wu
+authored and
+rsuntk
+committed
+3 weeks ago
+Verified
+power: supply: qcom: qpnp-qg: Fix battery coulomb count not monotonic
+Jack Wursuntk
+Jack Wu
+authored and
+rsuntk
+committed
+3 weeks ago
+Verified
+power: supply: qcom: qg-soc: Don't drop SOC if still charging
+Panchajanya1999rsuntk
+Panchajanya1999
+authored and
+rsuntk
+committed
+3 weeks ago
+Partially verified
+power: supply: qcom: fg-alg: Support maximum limit for capacity learning
+Jack Wursuntk
+Jack Wu
+authored and
+rsuntk
+committed
+3 weeks ago
+Verified
+power: supply: qcom: qpnp-smb2: Allow write access to some battery psy properties
