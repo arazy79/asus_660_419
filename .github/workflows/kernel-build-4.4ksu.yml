@@ -172,8 +172,6 @@ jobs:
               echo "TC_MAKE_ARGS=CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
               ;;
           esac
-          # -D_LINUX: untuk ACPI (acenv.h -> aclinux.h)
-          # -D__nocfi=: lapisan kedua untuk KernelSU-Next (selain fallback di compiler-gcc.h)
           echo "TC_KCFLAGS=-w -D_LINUX -D__nocfi=" >> "$GITHUB_ENV"
 
       - name: Debug environment
@@ -198,9 +196,11 @@ jobs:
             echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y"
             echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y"
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y"
+            echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y"
           } >> .config
           yes "" | make ARCH=${{ env.ARCH }} $TC_MAKE_ARGS oldconfig
-          grep -E "CONFIG_KSU" .config || true
+          echo "=== Config KSU/SUSFS ==="
+          grep -E "CONFIG_KSU|CONFIG_THREAD_INFO_IN_TASK|CONFIG_KPROBES" .config || true
 
       - name: Build kernel
         working-directory: kernel
