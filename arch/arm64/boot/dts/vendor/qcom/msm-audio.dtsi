@@ -661,6 +661,7 @@
 		reg-names = "avtimer_lsb_addr", "avtimer_msb_addr";
 		qcom,clk-div = <27>;
 	};
+};
 
 &q6core {
 	lpi_tlmm: lpi_pinctrl@15070000 {
@@ -880,6 +881,7 @@
 	};
 };
 
+&soc {
 	audio_apr: qcom,msm-audio-apr {
 		compatible = "qcom,msm-audio-apr";
 		qcom,subsys-name = "apr_adsp";
