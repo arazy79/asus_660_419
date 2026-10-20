@@ -66,23 +66,6 @@ jobs:
           ref: ${{ github.event.inputs.branch || 'fastcharge-test' }}
           path: kernel
           submodules: recursive
-      - name: Apply close_range backport (fix netd posix_spawn / hotspot)
-        working-directory: kernel
-        run: |
-          if [ ! -f close_range_backport.patch ]; then
-            echo "::error::close_range_backport.patch tidak ada di root repo (branch ${{ github.event.inputs.branch || 'fastcharge-test' }})"
-            exit 1
-          fi
-          if git apply -R --check close_range_backport.patch 2>/dev/null; then
-            echo "close_range backport sudah ter-apply di source, skip"
-          else
-            git apply --check close_range_backport.patch
-            git apply close_range_backport.patch
-            echo "close_range backport applied"
-          fi
-          echo "=== cek hasil ==="
-          grep -n "SYSCALL_DEFINE3(close_range" fs/open.c
-          grep -n "__NR_close_range\|define __NR_syscalls" include/uapi/asm-generic/unistd.h
       - name: Setup KernelSU
         if: ${{ github.event.inputs.enable_ksu == 'true' }}
         working-directory: kernel
