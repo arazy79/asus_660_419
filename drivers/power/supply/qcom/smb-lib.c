@@ -2273,9 +2273,11 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 
 	chg->system_temp_level = val->intval;
 
+#ifndef CONFIG_FORCE_FAST_CHARGE
 	if (chg->system_temp_level == chg->thermal_levels)
 		return vote(chg->chg_disable_votable,
 			THERMAL_DAEMON_VOTER, true, 0);
+#endif
 
 	vote(chg->chg_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
 //	if (chg->system_temp_level == 0)
@@ -2818,7 +2820,16 @@ int smblib_get_prop_pd_allowed(struct smb_charger *chg,
 int smblib_get_prop_input_current_settled(struct smb_charger *chg,
 					  union power_supply_propval *val)
 {
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	if (const_icl_enable && asus_flow_processing) {
+		val->intval = CONST_ICL_UA;
+		return 0;
+	} else {
+#endif
 	return smblib_get_charge_param(chg, &chg->param.icl_stat, &val->intval);
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	}
+#endif
 }
 
 #define HVDCP3_STEP_UV	200000
@@ -3912,7 +3923,7 @@ void asus_chg_flow_work(struct work_struct *work)
 {
 	const struct apsd_result *apsd_result;
 	int rc;
-	u8 set_icl;
+	u8 set_icl = ICL_2500mA;
 	u8 USBIN_1_cc;
 	if (!asus_get_prop_usb_present(smbchg_dev)) {
 		smblib_uusb_removal(smbchg_dev);
@@ -3939,7 +3950,6 @@ void asus_chg_flow_work(struct work_struct *work)
 /* Huaqin add for ZQL1650-71 before BC1.2 500mA before adapter id 1000mA by fangaijun at 2018/4/4 end */
 #endif
 /* Huaqin add for ZQL1650-1287 factory version remove before BC1.2 500mA before adapter id 1000mA by fangaijun at 2018/5/8 end */
-			set_icl = ICL_4000mA;
 		rc = smblib_masked_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG,
 			USBIN_CURRENT_LIMIT_MASK, set_icl);
 		if (rc < 0)
@@ -3951,7 +3961,6 @@ void asus_chg_flow_work(struct work_struct *work)
 	case CDP_CHARGER_BIT:
 		printk("asus_chg_flow_work enter CDP_CHARGER_BIT\n");
 /* Huaqin modify for ZQL1650 modify CDP charging current by fangaijun at 2018/04/18 start*/
-			set_icl = ICL_4000mA;
 /* Huaqin modify for ZQL1650 modify CDP charging current by fangaijun at 2018/04/18 end*/
 		rc = smblib_masked_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG,     //reg=1370   bit7-bit0=USBIN_CURRENT_LIMIT
 			USBIN_CURRENT_LIMIT_MASK, set_icl);
@@ -3970,8 +3979,7 @@ void asus_chg_flow_work(struct work_struct *work)
 		smblib_asus_monitor_start(smbchg_dev, 0);		//ASUS BSP Austin_T: Jeita start
 		break;
 	case OCP_CHARGER_BIT:
-		printk("asus_chg_flow_work enter OCP_CHARGER_BIT");
-			set_icl = ICL_4000mA;                                                                                                                                 //reg=1370 bit7-bit0
+		printk("asus_chg_flow_work enter OCP_CHARGER_BIT");                                                                                                                                //reg=1370 bit7-bit0
 		rc = smblib_masked_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG,
 			USBIN_CURRENT_LIMIT_MASK, set_icl);
 		if (rc < 0)
