@@ -1,76 +1,73 @@
-name: Build Kernel X00TD (SD660)
+name: Cleanup KernelSU 2
 
 on:
   workflow_dispatch:
     inputs:
-      kernel_repo:
-        description: 'URL repository kernel (contoh: https://github.com/arazy79/asus_660_419)'
-        required: true
-        default: 'https://github.com/arazy79/asus_660_419'
+      target_repo:
+        description: 'Repo target (owner/name). Kosongkan = repo ini sendiri'
+        required: false
+        default: 'arazy79/asus_660_419'
         type: string
 
-      kernel_branch:
-        description: 'Branch kernel (contoh: 4.4rsksvn)'
+      target_branch:
+        description: 'Branch target (contoh: 4.4rsksvn)'
         required: true
         default: '4.4rsksvn'
         type: string
 
-      kernel_config:
-        description: 'Defconfig (contoh: x00td_defconfig)'
-        required: true
-        default: 'x00td_defconfig'
-        type: string
-
-      use_anykernel:
-        description: 'Pakai AnyKernel3?'
+      push_changes:
+        description: 'Push hasil cleanup ke branch target?'
         required: true
         default: true
         type: boolean
 
-permissions:
-  contents: write
-
 jobs:
-  build:
-    name: Build Kernel
-    runs-on: ubuntu-22.04
-
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # PENTING: izin push
     steps:
-      - name: Checkout kernel source
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.kernel_repo }}
-          ref: ${{ inputs.kernel_branch }}
-          path: kernel-source
+          repository: ${{ inputs.target_repo != '' && inputs.target_repo || github.repository }}
+          ref: ${{ inputs.target_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
-      - name: Setup build environment
+      - name: Hapus folder KernelSU & sisa lama
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib \
-            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
-            lib32z1-dev libelf-dev liblz4-tool libncurses5 libssl-dev libxml2 libxml2-utils \
-            lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
+          set -e
+          echo "=== Cek apa yang ada ==="
+          if [ -d KernelSU ]; then
+            ls -ld KernelSU
+          else
+            echo "Folder KernelSU tidak ada (skip)"
+          fi
 
-      - name: Build kernel
-        working-directory: kernel-source
+          echo "=== Hapus folder KernelSU ==="
+          rm -rf KernelSU
+
+          echo "=== Bersihkan Makefile ==="
+          sed -i '/kernelsu/d' drivers/Makefile 2>/dev/null || true
+
+          echo "=== Bersihkan Kconfig ==="
+          sed -i '/drivers\/kernelsu\/Kconfig/d' drivers/Kconfig 2>/dev/null || true
+
+          echo "=== Status perubahan ==="
+          git status
+          git diff
+
+      - name: Commit & Push
+        if: ${{ inputs.push_changes }}
         run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-          make O=out ${{ inputs.kernel_config }}
-          make O=out -j$(nproc)
-
-      - name: Package with AnyKernel3 (optional)
-        if: ${{ inputs.use_anykernel }}
-        run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git -b master anykernel
-          cp kernel-source/out/arch/arm64/boot/Image.gz-dtb anykernel/
-          cd anykernel
-          zip -r9 ../kernel-x00td-${{ inputs.kernel_branch }}.zip *
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-x00td
-          path: |
-            kernel-x00td-*.zip
-            kernel-source/out/arch/arm64/boot/Image.gz-dtb
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "✅ Tidak ada perubahan — sudah bersih"
+          else
+            git commit -m "Cleanup: hapus folder KernelSU & sisa lama"
+            git push origin HEAD:${{ inputs.target_branch }}
+            echo "✅ Berhasil di-push ke ${{ inputs.target_branch }}!"
+          fi
