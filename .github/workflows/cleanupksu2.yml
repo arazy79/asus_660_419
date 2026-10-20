@@ -1,0 +1,76 @@
+name: Build Kernel X00TD (SD660)
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_repo:
+        description: 'URL repository kernel (contoh: https://github.com/arazy79/asus_660_419)'
+        required: true
+        default: 'https://github.com/arazy79/asus_660_419'
+        type: string
+
+      kernel_branch:
+        description: 'Branch kernel (contoh: 4.4rsksvn)'
+        required: true
+        default: '4.4rsksvn'
+        type: string
+
+      kernel_config:
+        description: 'Defconfig (contoh: x00td_defconfig)'
+        required: true
+        default: 'x00td_defconfig'
+        type: string
+
+      use_anykernel:
+        description: 'Pakai AnyKernel3?'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.kernel_repo }}
+          ref: ${{ inputs.kernel_branch }}
+          path: kernel-source
+
+      - name: Setup build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib \
+            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
+            lib32z1-dev libelf-dev liblz4-tool libncurses5 libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
+
+      - name: Build kernel
+        working-directory: kernel-source
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          make O=out ${{ inputs.kernel_config }}
+          make O=out -j$(nproc)
+
+      - name: Package with AnyKernel3 (optional)
+        if: ${{ inputs.use_anykernel }}
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git -b master anykernel
+          cp kernel-source/out/arch/arm64/boot/Image.gz-dtb anykernel/
+          cd anykernel
+          zip -r9 ../kernel-x00td-${{ inputs.kernel_branch }}.zip *
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-x00td
+          path: |
+            kernel-x00td-*.zip
+            kernel-source/out/arch/arm64/boot/Image.gz-dtb
