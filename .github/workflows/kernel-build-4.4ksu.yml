@@ -7,7 +7,7 @@ on:
         required: true
         default: 'X00TD_defconfig'
       toolchain:
-        description: 'Toolchain: gcc (disarankan untuk 4.4) | default | llvm'
+        description: 'Toolchain: gcc (disarankan) | default | llvm'
         type: choice
         default: 'gcc'
         options: [gcc, default, llvm]
@@ -39,7 +39,6 @@ jobs:
           repository: rusakseven/RSKSevenProject-X00TD
           ref: rsk-4.4-clean2
           path: kernel
-          # Jangan andalkan submodule: KernelSU-Next-v320 bukan submodule
           submodules: false
 
       - name: Clone KernelSU-Next legacy + SUSFS v2
@@ -145,6 +144,7 @@ jobs:
                 echo "::error::gcc aarch64 tidak ditemukan di $TC/bin"
                 exit 1
               fi
+              echo "::notice::Menggunakan prefix: $prefix"
               echo "$TC/bin" >> "$GITHUB_PATH"
               echo "TC_MAKE_ARGS=CROSS_COMPILE=$TC/bin/$prefix CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
               ;;
@@ -152,15 +152,24 @@ jobs:
               echo "TC_MAKE_ARGS=CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> "$GITHUB_ENV"
               ;;
           esac
-          echo "TC_KCFLAGS=-w" >> "$GITHUB_ENV"
+          # -D_LINUX: wajib untuk tree ini supaya include/acpi/platform/acenv.h
+          # memilih aclinux.h (yang mendefinisikan ACPI_USE_SYSTEM_CLIBRARY dan u32).
+          # Tanpa ini, ACPI gagal compile dengan "unknown type name 'u32'".
+          echo "TC_KCFLAGS=-w -D_LINUX" >> "$GITHUB_ENV"
+
+      - name: Debug environment
+        run: |
+          echo "TC_MAKE_ARGS=$TC_MAKE_ARGS"
+          echo "TC_KCFLAGS=$TC_KCFLAGS"
+          which aarch64-linux-gnu-gcc || true
+          which clang || true
+          ls -la "$HOME/gcc-arm64/bin" 2>/dev/null | head -20 || true
 
       - name: Make defconfig (KSU + SuSFS)
         working-directory: kernel
         run: |
           set -e
-          # Build in-tree sesuai resep rilis RSKSeven
           make ARCH=${{ env.ARCH }} $TC_MAKE_ARGS ${{ github.event.inputs.defconfig }}
-          # Pastikan KSU & SuSFS aktif (defconfig sudah CONFIG_KSU=y; Kconfig default SUSFS=y)
           {
             echo "CONFIG_KSU=y"
             echo "CONFIG_KSU_SUSFS=y"
@@ -189,7 +198,6 @@ jobs:
         run: |
           set -e
           make ARCH=${{ env.ARCH }} $TC_MAKE_ARGS dtbs
-          # Defconfig punya CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y, biasanya sudah jadi
           if [ ! -f arch/arm64/boot/Image.gz-dtb ]; then
             echo "Image.gz-dtb belum ada, gabungkan manual"
             DTB=$(find arch/arm64/boot/dts -iname "*x00td*.dtb" | head -1)
@@ -224,3 +232,13 @@ jobs:
         with:
           name: Kernel-RSKSeven-X00TD-4.4-${{ github.event.inputs.toolchain }}-${{ github.run_id }}
           path: kernel/arch/arm64/boot/Image.gz-dtb
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-log-${{ github.run_id }}
+          path: |
+            kernel/.config
+            kernel/**/*.log
+          if-no-files-found: ignore
