@@ -48,7 +48,7 @@ static int __init read_refresh_rate_cmd(char *s)
 	if (s)
 		refresh_rate_cus = simple_strtoul(s, NULL, 0);
 	
-	if (refresh_rate_cus < 48 || refresh_rate_cus > 72)
+	if (refresh_rate_cus < 48 || refresh_rate_cus > 65)
 		refresh_rate_cus = CONFIG_FB_MSM_MDSS_DEFAULT_FRAMERATE;
 	
 	return 1;
@@ -2368,7 +2368,7 @@ static int mdss_dsi_set_refresh_rate_range(struct device_node *pan_node,
 		 * as max refresh rate supported.
 		 */
 		pinfo->max_fps = pinfo->mipi.frame_rate;
-		rc = 0;
+		rc = 65;
 	}
 
 	pr_info("dyn_fps: min = %d, max = %d\n",
