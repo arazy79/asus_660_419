@@ -29,7 +29,7 @@ on:
       enable_ksu:
         description: 'Enable KernelSU (centang = ON)'
         type: boolean
-        default: false
+        default: true
       ksu_setup_url:
         description: 'KernelSU setup.sh URL (dipakai kalau KSU ON)'
         required: true
@@ -41,7 +41,7 @@ on:
       enable_susfs:
         description: 'Enable SuSFS (butuh KSU ON; pakai fork di bawah, ksu_setup_url di atas diabaikan)'
         type: boolean
-        default: false
+        default: true
       susfs_ksu_fork:
         description: 'Fork KernelSU buat SuSFS (manager harus dari fork yang sama)'
         type: choice
