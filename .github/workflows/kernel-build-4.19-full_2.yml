@@ -17,7 +17,7 @@ on:
       toolchain:
         description: 'Toolchain: default = clang+binutils bawaan Ubuntu (seperti biasa) | llvm = Neutron clang 24 | gcc = EVA GCC'
         type: choice
-        default: 'default'
+        default: 'llvm'
         options:
           - default
           - llvm
