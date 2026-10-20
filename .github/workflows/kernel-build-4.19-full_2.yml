@@ -1,15 +1,15 @@
-name: Kernel Build X00TD 4.19 skywalker KSUUUUUUUUU
+name: Kernel Build X00TD 4.19 skywalker KSUUUUUUUUU 2222
 on:
   workflow_dispatch:
     inputs:
       repo:
         description: 'Repository kernel (format owner/repo, JANGAN full URL). Kosongkan = pakai default arazy79/android-kernel-tes-4.19'
         required: false
-        default: 'arazy79/android-kernel-tes-4.19'
+        default: 'arazy79/asus_660_419'
       branch:
         description: 'Branch / tag / commit yang di-checkout'
         required: true
-        default: 'fastcharge-test'
+        default: 'a16-fastcharge'
       defconfig:
         description: 'Defconfig path (relatif dari arch/arm64/configs/)'
         required: true
