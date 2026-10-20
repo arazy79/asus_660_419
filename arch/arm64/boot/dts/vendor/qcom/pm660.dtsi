@@ -486,7 +486,7 @@
 				qcom,effect-id = <1>;
 				qcom,wf-vmax-mv = <1200>;
 				qcom,wf-pattern = [7e 7e 02 02 02 02 02 02];
-				qcom,wf-play-rate-us = <4000>;
+				qcom,wf-play-rate-us = <3500>;
 				qcom,wf-repeat-count = <2>;
 				qcom,wf-s-repeat-count = <1>;
 				qcom,lra-auto-resonance-disable;
@@ -504,7 +504,7 @@
 				qcom,effect-id = <3>;
 				qcom,wf-vmax-mv = <1200>;
 				qcom,wf-pattern = [7e 7e 7e];
-				qcom,wf-play-rate-us = <6667>;
+				qcom,wf-play-rate-us = <4000>;
 				qcom,lra-auto-resonance-disable;
 			};
 			wf_4 {
@@ -520,7 +520,7 @@
 				qcom,effect-id = <5>;
 				qcom,wf-vmax-mv = <3600>;
 				qcom,wf-pattern = [7e 7e 7e];
-				qcom,wf-play-rate-us = <6667>;
+				qcom,wf-play-rate-us = <5300>;
 				qcom,wf-brake-pattern = [03 00 00 00];
 				qcom,lra-auto-resonance-disable;
 			};
