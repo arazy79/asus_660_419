@@ -1,58 +1,29 @@
-power: supply: qcom: smb-reg: Fix incorrect QC2.0 pulse count enum values
-power: supply: qcom: Fix wrong logic in maximum limit
-power: supply: qcom: qpnp-qg: Fix incorrect vbatt parameter for good ocv re-trigger
-power: supply: qcom: qpnp-qg: Adjust QG_SOC when CC_SOC exceeds SOC_FULL
-power: supply: qcom: qpnp-qg: Fix the 1% resolution limit of charge_counter
-power: supply: qcom: qpnp-qg: Fix battery coulomb count not monotonic
-power: supply: qcom: qg-soc: Don't drop SOC if still charging
-power: supply: qcom: fg-alg: Support maximum limit for capacity learning
-power: supply: qcom: qpnp-smb2: Allow write access to some battery psy properties
-drivers: misc: implement usb fast charge mode
-power: supply: qpnp-fg-gen3: 1000mA minimum charging to 90%
-power: supply: qpnp-fg-gen3: force setting warm/hot jeita threshold as 97C
-arm64: boot: dts: ASUS: Set fcc-max-ua value to 2300
-power: supply: Classify Battery Monitor Systems as batteries
-power: supply: smb-lib: Explicitly mark *chg variable as unused
-power: supply: qpnp-fg-gen3: Expose property online status
-power: supply: smb-lib: use USB options in low ICL range
-power: supply: smb1351-charger: Fix the float voltage unit passed to its set method
-power: supply: smb1351: add MODEL_NAME property in parallel power_supply
-power: supply: smb1351: Fix parallel ICL configuration
-power: supply: smb1351-charger: Disable parallel charging in shutdown path
-power: supply: smb1351-charger: Fix check in shutdown path for parallel disable
-power: supply: qpnp-smb2: Configure AICL rerun to be enabled
-power: supply: qpnp-smb2: Clear HDC AICL
-power: supply: qpnp-smb2: Fix usbin suspend when vbus up 5v->4V->5V
-power: supply: step-chg-jeita: faster charging info on lock screen
-power: supply: smb-lib: Charging hax
-power: supply: smb-lib: Use 0xF9 for Float Voltage
-Revert "power: supply: qpnp-fg-gen3: 1000mA minimum charging to 90%"
-Revert "power: supply: smb-lib: use USB options in low ICL range"
-power: supply: smb1351-charger: Increase the current slightly
-arm64: boot: dts, power: Charging code revise
-arm64: boot: dts: ASUS: Increase max charge current & further jeita voltage ranges()
-power: supply: smb-lib: add icl_settled for fcc/icl
-power: supply: smb-lib: add parameter to force charging current
-power: supply: smb-lib: set default CONST_ICL_UA to 2500000
-power: supply: smb-lib: set default forced_current to 2500 mA
-arm64: configs: asus: Disable CONFIG_SMB1351_USB_CHARGER
-power: supply: smb-lib: disable THERMAL_DAEMON_VOTER if CONFIG_FORCE_FAST_CHARGE=y
-power: supply: smb-lib: fix INPUT_CURRENT_SETTLED constantly showing 2500000
-power: supply: smb-lib: add ICL_2500mA definition
-power: supply: smb-lib: recalculate jeita range settings
-power: supply: smb-lib: set asus_chg_flow_work to 2500mA for all charger type
-power: supply: smb-lib: set usb_max_current in asus_adapter_adc_work to 2500mA
-power: supply: smb-lib: set ICL to 2500mA on initial insertion
-power: supply: smb-lib: set LEGACY_UNKNOWN_VOTER to 2500mA
-power: supply: smb-lib: add FORCE_FAST_CHARGE_VOTER to jeita_rules()
-power: supply: smb-lib: add missed syntax
-arm64: configs: asus: Enable FORCE_FAST_CHARGE
-power: supply: qcom: qpnp-smb2: Allow write access to some battery psy properties
-power: supply: qcom: fg-alg: Support maximum limit for capacity learning
-power: supply: qcom: qg-soc: Don't drop SOC if still charging
-power: supply: qcom: qpnp-qg: Fix battery coulomb count not monotonic
-power: supply: qcom: qpnp-qg: Fix the 1% resolution limit of charge_counter
-power: supply: qcom: qpnp-qg: Adjust QG_SOC when CC_SOC exceeds SOC_FULL
-power: supply: qcom: qpnp-qg: Fix incorrect vbatt parameter for good ocv re-trigger
-power: supply: qcom: Fix wrong logic in maximum limit
-power: supply: qcom: smb-reg: Fix incorrect QC2.0 pulse count enum values
+X00TD/X01BD: Full re-base - Ratibor_LTS_ReBased
+Merge remote-tracking branch 'lineage/lineage-20' into lineage-23.2
+fixup! BACKPORT: treewide: prefix header search paths with $(srctree)/
+X00TD/X01BD: drivers: media: platform: msm: camera_v2: cci: mark msm_cci_irq_routine as __maybe_unused
+X00TD/X01BD: drivers: media: platform: msm: camera_v2: isp40: fix misleading indentation in ds_settings
+X00TD/X01BD: drivers: media: platform: msm: camera_v2: del unused & fix syntax
+X00TD/X01BD: drivers: media: platform: msm: camera_v2: sensor: flash: replace deprecated group_id with function
+X00TD: drivers: msm: camera_v2: Import Asus Changes
+msm: camera_v2: Add support for second flash as msm subflash
+msm: camera: disable CSID virtualization
+Revert "msm: camera: Send topology and stream status to TZ"
+msm: camera: Fix isp_vma_fault function signature
+camera_v2: isp40: Fix misleading indentation warnings
+msm: camera: Add gpio based flash driver support
+camera: smmu: fix for incorrect populated sids
+Merge "msm: camera: QM215 delay during power up sequence"
+Merge "msm: camera: Add reset logic for snps phy"
+msm: camera: Add reset logic for snps phy
+msm: camera: Update SDM439 csiphy driver
+Merge "msm: camera: Fix for HFR120 crash while"
+msm: camera: Update csiphy data rate
+msm: camera: QM215 delay during power up sequence
+msm: camera: Fix for HFR120 crash while
+msm: camera: Fix for memory leak
+msm: camera: Enable camera sub devices
+camera: smmu: smmu changes for 4.19
+msm: camera: Enable CPP and JPEG module
+msm: camera: compilation fix in isp
+msm: camera: Port msm-4.14 camera kernel on msm-4.19 kernel
