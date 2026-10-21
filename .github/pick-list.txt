@@ -1,6 +1,8 @@
 X00TD: drivers: msm: camera_v2: Import Asus Changes
-msm: camera_v2: Add support for second flash as msm subflash
 msm: camera: disable CSID virtualization
 Revert "msm: camera: Send topology and stream status to TZ"
-X00TD/X01BD: drivers: media: platform: msm: camera_v2: sensor: flash: replace deprecated group_id with function
 X00TD/X01BD: drivers: media: platform: msm: camera_v2: del unused & fix syntax
+X00TD/X01BD: drivers: media: platform: msm: camera_v2: cci: mark msm_cci_irq_routine as __maybe_unused
+X00TD/X01BD: drivers: media: platform: msm: camera_v2: isp40: fix misleading indentation in ds_settings
+camera_v2: isp40: Fix misleading indentation warnings
+msm: camera: Fix isp_vma_fault function signature
