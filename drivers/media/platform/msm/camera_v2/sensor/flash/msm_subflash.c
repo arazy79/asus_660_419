@@ -363,6 +363,14 @@ static int32_t msm_subflash_i2c_release(
 {
 	int32_t rc = 0;
 
+	if ((&flash_ctrl->power_info == NULL) ||
+		(&flash_ctrl->flash_i2c_client == NULL)) {
+		pr_err("%s:%d failed: %pK %pK\n",
+			__func__, __LINE__, &flash_ctrl->power_info,
+			&flash_ctrl->flash_i2c_client);
+		return -EINVAL;
+	}
+
 	rc = msm_camera_power_down(&flash_ctrl->power_info,
 		flash_ctrl->flash_device_type,
 		&flash_ctrl->flash_i2c_client);
@@ -1291,7 +1299,7 @@ static int32_t msm_subflash_platform_probe(struct platform_device *pdev)
 		ARRAY_SIZE(flash_ctrl->msm_sd.sd.name),
 		"msm_camera_subflash");
 	media_entity_pads_init(&flash_ctrl->msm_sd.sd.entity, 0, NULL);
-	flash_ctrl->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_FLASH;
+	flash_ctrl->msm_sd.sd.entity.function = MSM_CAMERA_SUBDEV_FLASH;
 	flash_ctrl->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x1;
 	msm_sd_register(&flash_ctrl->msm_sd);
 
