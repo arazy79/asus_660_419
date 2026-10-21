@@ -1,29 +1,6 @@
-X00TD/X01BD: Full re-base - Ratibor_LTS_ReBased
-Merge remote-tracking branch 'lineage/lineage-20' into lineage-23.2
-fixup! BACKPORT: treewide: prefix header search paths with $(srctree)/
-X00TD/X01BD: drivers: media: platform: msm: camera_v2: cci: mark msm_cci_irq_routine as __maybe_unused
-X00TD/X01BD: drivers: media: platform: msm: camera_v2: isp40: fix misleading indentation in ds_settings
-X00TD/X01BD: drivers: media: platform: msm: camera_v2: del unused & fix syntax
-X00TD/X01BD: drivers: media: platform: msm: camera_v2: sensor: flash: replace deprecated group_id with function
 X00TD: drivers: msm: camera_v2: Import Asus Changes
 msm: camera_v2: Add support for second flash as msm subflash
 msm: camera: disable CSID virtualization
 Revert "msm: camera: Send topology and stream status to TZ"
-msm: camera: Fix isp_vma_fault function signature
-camera_v2: isp40: Fix misleading indentation warnings
-msm: camera: Add gpio based flash driver support
-camera: smmu: fix for incorrect populated sids
-Merge "msm: camera: QM215 delay during power up sequence"
-Merge "msm: camera: Add reset logic for snps phy"
-msm: camera: Add reset logic for snps phy
-msm: camera: Update SDM439 csiphy driver
-Merge "msm: camera: Fix for HFR120 crash while"
-msm: camera: Update csiphy data rate
-msm: camera: QM215 delay during power up sequence
-msm: camera: Fix for HFR120 crash while
-msm: camera: Fix for memory leak
-msm: camera: Enable camera sub devices
-camera: smmu: smmu changes for 4.19
-msm: camera: Enable CPP and JPEG module
-msm: camera: compilation fix in isp
-msm: camera: Port msm-4.14 camera kernel on msm-4.19 kernel
+X00TD/X01BD: drivers: media: platform: msm: camera_v2: sensor: flash: replace deprecated group_id with function
+X00TD/X01BD: drivers: media: platform: msm: camera_v2: del unused & fix syntax
