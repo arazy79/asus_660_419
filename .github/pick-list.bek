@@ -1,3 +1,12 @@
+power: supply: qcom: smb-reg: Fix incorrect QC2.0 pulse count enum values
+power: supply: qcom: Fix wrong logic in maximum limit
+power: supply: qcom: qpnp-qg: Fix incorrect vbatt parameter for good ocv re-trigger
+power: supply: qcom: qpnp-qg: Adjust QG_SOC when CC_SOC exceeds SOC_FULL
+power: supply: qcom: qpnp-qg: Fix the 1% resolution limit of charge_counter
+power: supply: qcom: qpnp-qg: Fix battery coulomb count not monotonic
+power: supply: qcom: qg-soc: Don't drop SOC if still charging
+power: supply: qcom: fg-alg: Support maximum limit for capacity learning
+power: supply: qcom: qpnp-smb2: Allow write access to some battery psy properties
 drivers: misc: implement usb fast charge mode
 power: supply: qpnp-fg-gen3: 1000mA minimum charging to 90%
 power: supply: qpnp-fg-gen3: force setting warm/hot jeita threshold as 97C
@@ -43,7 +52,3 @@ power: supply: qcom: fg-alg: Support maximum limit for capacity learning
 power: supply: qcom: qg-soc: Don't drop SOC if still charging
 power: supply: qcom: qpnp-qg: Fix battery coulomb count not monotonic
 power: supply: qcom: qpnp-qg: Fix the 1% resolution limit of charge_counter
-power: supply: qcom: qpnp-qg: Adjust QG_SOC when CC_SOC exceeds SOC_FULL
-power: supply: qcom: qpnp-qg: Fix incorrect vbatt parameter for good ocv re-trigger
-power: supply: qcom: Fix wrong logic in maximum limit
-power: supply: qcom: smb-reg: Fix incorrect QC2.0 pulse count enum values
