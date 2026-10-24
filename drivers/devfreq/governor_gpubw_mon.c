@@ -2,24 +2,35 @@
 /*
  * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * TUNED: konstanta diturunkan dari default konservatif Qualcomm biar bus
+ * memori lebih responsif pas scroll/game. Masih aman buat daya & suhu.
  */
-
 #include <linux/devfreq.h>
 #include <linux/module.h>
 #include <linux/msm_adreno_devfreq.h>
 #include <linux/of_platform.h>
 #include <linux/slab.h>
-
 #include "devfreq_trace.h"
 #include "governor.h"
 
 #define MIN_BUSY                1000
-#define LONG_FLOOR              50000
-#define HIST                    5
-#define TARGET                  80
-#define CAP                     75
-#define WAIT_THRESHOLD          10
-/* AB vote is in multiple of BW_STEP Mega bytes */
+/*
+ * Default sampling interval bus. 50ms asli = terlalu lambat (20x/detik).
+ * 25ms = 40x/detik, cukup responsif tapi overhead masih kecil.
+ * BISA DIUBAH RUNTIME via sysfs: /sys/.../gpubw_mon/sampling_interval
+ * Cobain 15000 (15ms) kalo masih kerasa lambat naikin bus-nya.
+ */
+#define LONG_FLOOR              25000
+/* hysteresis cut-off up/down. Asli 5 → 4, sedikit lebih longgar. */
+#define HIST                    4
+/* target utilisasi bus. Asli 80 → 75, lebih agresif naik. */
+#define TARGET                  75
+/* GPU minimal load sebelum boleh naik bus. Asli 75 → 70, naik lebih awal. */
+#define CAP                     70
+/* kalo ram_wait > % ini langsung FAST_HINT (asal gpu_percent > CAP). Asli 10 → 8. */
+#define WAIT_THRESHOLD          8
+/* AB vote in multiple of BW_STEP Mega bytes */
 #define BW_STEP                 160
 
 static void _update_cutoff(struct devfreq_msm_adreno_tz_data *priv,
@@ -42,7 +53,6 @@ static inline int devfreq_get_freq_level(struct devfreq *devfreq,
 	for (lev = 0; lev < devfreq->profile->max_state; lev++)
 		if (freq == devfreq->profile->freq_table[lev])
 			return lev;
-
 	return -EINVAL;
 }
 
@@ -88,7 +98,6 @@ static ssize_t sampling_interval_store(struct device *dev,
 		return ret;
 
 	bus_profile->sampling_ms = value;
-
 	return count;
 }
 
@@ -104,7 +113,6 @@ static const struct device_attribute *gpubw_attr_list[] = {
 static int devfreq_gpubw_get_target(struct devfreq *df,
 		unsigned long *freq)
 {
-
 	struct devfreq_msm_adreno_tz_data *priv = df->data;
 	struct msm_busmon_extended_profile *bus_profile = container_of(
 			(df->profile),
@@ -133,7 +141,6 @@ static int devfreq_gpubw_get_target(struct devfreq *df,
 	stats->private_data = &b;
 
 	result = devfreq_update_stats(df);
-
 	*freq = stats->current_frequency;
 
 	priv->bus.total_time += stats->total_time;
@@ -174,10 +181,12 @@ static int devfreq_gpubw_get_target(struct devfreq *df,
 	} else {
 		/* GPU votes for IB not AB so don't under vote the system */
 		norm_cycles = (100 * norm_cycles) / TARGET;
+
 		act_level = priv->bus.index[level] + b.mod;
 		act_level = (act_level < 0) ? 0 : act_level;
 		act_level = (act_level >= priv->bus.num) ?
 		(priv->bus.num - 1) : act_level;
+
 		if ((norm_cycles > priv->bus.up[act_level] ||
 				wait_active_percent > WAIT_THRESHOLD) &&
 				gpu_percent > CAP)
@@ -197,6 +206,7 @@ static int devfreq_gpubw_get_target(struct devfreq *df,
 		/* Re-calculate the AB percentage for a new IB vote */
 		norm_ab =  (unsigned int)priv->bus.ram_time /
 			(unsigned int) priv->bus.total_time;
+
 		if (norm_ab > norm_ab_max)
 			norm_ab_max = norm_ab;
 		bus_profile->percent_ab = (100 * norm_ab) / norm_ab_max;
@@ -213,14 +223,12 @@ static int devfreq_gpubw_get_target(struct devfreq *df,
 static int gpubw_start(struct devfreq *devfreq)
 {
 	struct devfreq_msm_adreno_tz_data *priv;
-
 	struct msm_busmon_extended_profile *bus_profile = container_of(
 					(devfreq->profile),
 					struct msm_busmon_extended_profile,
 					profile);
 	unsigned int t1, t2 = 2 * HIST;
 	int i, bus_size;
-
 
 	devfreq->data = bus_profile->private_data;
 	priv = devfreq->data;
@@ -230,6 +238,7 @@ static int gpubw_start(struct devfreq *devfreq)
 	priv->bus.down = kzalloc(bus_size, GFP_KERNEL);
 	priv->bus.p_up = kzalloc(bus_size, GFP_KERNEL);
 	priv->bus.p_down = kzalloc(bus_size, GFP_KERNEL);
+
 	if (priv->bus.up == NULL || priv->bus.down == NULL ||
 		priv->bus.p_up == NULL || priv->bus.p_down == NULL)
 		return -ENOMEM;
@@ -242,12 +251,14 @@ static int gpubw_start(struct devfreq *devfreq)
 		priv->bus.p_down[i] = t2 - 2 * HIST;
 		t2 = t1;
 	}
+
 	/* Set the upper-most and lower-most bounds correctly. */
 	priv->bus.p_down[0] = 0;
 	priv->bus.p_down[1] = (priv->bus.p_down[1] > (2 * HIST)) ?
 				priv->bus.p_down[1] : (2 * HIST);
 	if (priv->bus.num >= 1)
 		priv->bus.p_up[priv->bus.num - 1] = 100;
+
 	_update_cutoff(priv, priv->bus.max);
 
 	bus_profile->sampling_ms = LONG_FLOOR;
@@ -272,6 +283,7 @@ static int gpubw_stop(struct devfreq *devfreq)
 		kfree(priv->bus.p_up);
 		kfree(priv->bus.p_down);
 	}
+
 	devfreq->data = NULL;
 	return 0;
 }
@@ -292,6 +304,7 @@ static int devfreq_gpubw_event_handler(struct devfreq *devfreq,
 
 	mutex_lock(&devfreq->lock);
 	freq = devfreq->previous_freq;
+
 	switch (event) {
 	case DEVFREQ_GOV_START:
 		result = gpubw_start(devfreq);
@@ -317,6 +330,7 @@ static int devfreq_gpubw_event_handler(struct devfreq *devfreq,
 		result = 0;
 		break;
 	}
+
 	mutex_unlock(&devfreq->lock);
 	return result;
 }
@@ -340,10 +354,8 @@ static void __exit devfreq_gpubw_exit(void)
 	ret = devfreq_remove_governor(&devfreq_gpubw);
 	if (ret)
 		pr_err("%s: failed remove governor %d\n", __func__, ret);
-
 }
 module_exit(devfreq_gpubw_exit);
 
-MODULE_DESCRIPTION("GPU bus bandwidth voting driver. Uses VBIF counters");
+MODULE_DESCRIPTION("GPU bus bandwidth voting driver. Uses VBIF counters (tuned)");
 MODULE_LICENSE("GPL v2");
-
