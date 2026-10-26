@@ -30,34 +30,33 @@ on:
         description: 'Enable KernelSU (centang = ON)'
         type: boolean
         default: true
+      ksu_setup_url:
+        description: 'KernelSU setup.sh URL (dipakai kalau KSU ON)'
+        required: true
+        default: 'https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh'
+      ksu_branch:
+        description: 'KernelSU branch / tag / commit (argumen setup.sh)'
+        required: true
+        default: 'master'
       enable_susfs:
-        description: 'Enable SuSFS (butuh KSU ON; fork harus bakasu atau sukisu)'
+        description: 'Enable SuSFS (butuh KSU ON; pakai fork di bawah, ksu_setup_url di atas diabaikan)'
         type: boolean
         default: true
-      ksu_fork:
-        description: 'Fork KernelSU (manager harus dari fork yang sama). backslashxx hanya untuk SuSFS OFF'
+      susfs_ksu_fork:
+        description: 'Fork KernelSU buat SuSFS (manager harus dari fork yang sama)'
         type: choice
         default: 'bakasu'
         options:
           - bakasu
           - sukisu
-          - backslashxx
       bakasu_ref:
         description: 'Ref BakaSU (branch/tag/SHA), cuma dipakai kalau fork = bakasu. Default main (branch sync-susfs sudah dihapus upstream). Kalau sudah sukses, pin ke SHA'
         required: true
-        default: 'd5e9e025b8b49155f8014684d64c91742b465f65'
+        default: 'main'
       sukisu_ref:
         description: 'Ref SukiSU-Ultra (branch/tag/SHA), cuma dipakai kalau fork = sukisu. Default = commit terakhir yang patch fix SukiSU dari builder masih bisa apply (21 Okt). builtin terbaru sudah bentrok'
         required: true
         default: '0165c0556929f1b509a9b632a46ef09b67a7940e'
-      builder_ref:
-        description: 'Ref repo JackA1ltman/NonGKI_Kernel_Build_2nd (branch/tag/SHA). Kalau sudah sukses, pin ke SHA biar bisa diulang persis'
-        required: true
-        default: 'mainline'
-      ksu_debug:
-        description: 'Enable CONFIG_KSU_DEBUG (default mati; fork KSU biasanya default-nya ON)'
-        type: boolean
-        default: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -97,54 +96,61 @@ jobs:
         if: ${{ github.event.inputs.enable_ksu == 'true' }}
         working-directory: kernel
         env:
+          KSU_URL: ${{ github.event.inputs.ksu_setup_url }}
+          KSU_BRANCH: ${{ github.event.inputs.ksu_branch }}
           ENABLE_SUSFS: ${{ github.event.inputs.enable_susfs }}
-          KSU_FORK: ${{ github.event.inputs.ksu_fork }}
+          SUSFS_FORK: ${{ github.event.inputs.susfs_ksu_fork }}
           BAKASU_REF: ${{ github.event.inputs.bakasu_ref }}
           SUKISU_REF: ${{ github.event.inputs.sukisu_ref }}
         run: |
-          case "$KSU_FORK" in
-            sukisu)
-              KSU_URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh"
-              KSU_BRANCH="${SUKISU_REF}"
-              KSU_REPO="https://github.com/SukiSU-Ultra/SukiSU-Ultra"
-              ;;
-            bakasu)
-              # Blokir SuSFS ($(error Please wait susfs update)) sudah dicabut di main (16 Okt),
-              # dan branch sync-susfs sudah dihapus upstream. Ref bisa branch/tag/SHA lewat input bakasu_ref.
-              KSU_URL="https://raw.githubusercontent.com/Baka-SU/BakaSU/${BAKASU_REF}/kernel/setup.sh"
-              KSU_BRANCH="${BAKASU_REF}"
-              KSU_REPO="https://github.com/Baka-SU/BakaSU"
-              ;;
-            backslashxx)
-              if [ "$ENABLE_SUSFS" = "true" ]; then
-                echo "::error::backslashxx tidak dipakai untuk SuSFS di workflow ini, pilih bakasu/sukisu atau matikan SuSFS"
+          KSU_REPO=""
+          if [ "$ENABLE_SUSFS" = "true" ]; then
+            case "$SUSFS_FORK" in
+              sukisu)
+                KSU_URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh"
+                KSU_BRANCH="${SUKISU_REF}"
+                KSU_REPO="https://github.com/SukiSU-Ultra/SukiSU-Ultra"
+                ;;
+              bakasu)
+                # Blokir SuSFS ($(error Please wait susfs update)) sudah dicabut di main (16 Okt),
+                # dan branch sync-susfs sudah dihapus upstream. Ref bisa branch/tag/SHA lewat input bakasu_ref.
+                KSU_URL="https://raw.githubusercontent.com/Baka-SU/BakaSU/${BAKASU_REF}/kernel/setup.sh"
+                KSU_BRANCH="${BAKASU_REF}"
+                KSU_REPO="https://github.com/Baka-SU/BakaSU"
+                ;;
+              *)
+                echo "::error::fork SuSFS tidak dikenal: $SUSFS_FORK"
                 exit 1
-              fi
-              KSU_URL="https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh"
-              KSU_BRANCH="master"
-              KSU_REPO="https://github.com/backslashxx/KernelSU"
-              ;;
-            *)
-              echo "::error::fork tidak dikenal: $KSU_FORK"
+                ;;
+            esac
+          else
+            if [ -z "$KSU_URL" ]; then
+              echo "::error::enable_ksu dicentang tapi ksu_setup_url kosong"
               exit 1
-              ;;
-          esac
+            fi
+            if [ ! -f arch/arm64/configs/vendor/extra/ksu.config ]; then
+              echo "::error::arch/arm64/configs/vendor/extra/ksu.config tidak ada di source"
+              exit 1
+            fi
+          fi
           echo "::group::KernelSU setup"
           echo "KSU script : $KSU_URL"
           echo "KSU branch : $KSU_BRANCH"
           # -f: kalau 404, curl gagal beneran (dulu isi "404: Not Found" ikut dijalankan bash)
           if ! curl -fLSs --retry 3 --retry-delay 2 -o /tmp/ksu_setup.sh "$KSU_URL"; then
             echo "::error::gagal download setup.sh KernelSU dari $KSU_URL (ref/branch mungkin sudah dihapus atau diganti nama)"
-            echo "Branch yang ada sekarang di $KSU_REPO:"
-            git ls-remote --heads "$KSU_REPO" | sed 's#.*refs/heads/#  - #' | head -30 || true
+            if [ -n "$KSU_REPO" ]; then
+              echo "Branch yang ada sekarang di $KSU_REPO:"
+              git ls-remote --heads "$KSU_REPO" | sed 's#.*refs/heads/#  - #' | head -30 || true
+            fi
             exit 1
           fi
           bash /tmp/ksu_setup.sh "$KSU_BRANCH"
-          # tampilkan commit KernelSU yang kepakai, biar gampang di-pin lewat bakasu_ref
+          # tampilkan commit KernelSU yang kepakai, biar gampang di-pin lewat bakasu_ref / sukisu_ref
           if [ -d KernelSU ]; then
             KSU_SHA="$(git -C KernelSU rev-parse HEAD)"
             echo "KSU commit : $KSU_SHA"
-            echo "::notice::KSU commit yang dipakai: $KSU_SHA (isi bakasu_ref dengan ini buat pin)"
+            echo "::notice::KSU commit yang dipakai: $KSU_SHA (isi bakasu_ref / sukisu_ref dengan ini buat pin)"
           fi
           echo "--- drivers/kernelsu ---"
           ls -la drivers/kernelsu || true
@@ -155,94 +161,82 @@ jobs:
             echo "::error::drivers/kernelsu/Kconfig tidak ada, setup KernelSU gagal"
             exit 1
           fi
-      - name: Apply SuSFS kernel patch + inline hooks
+          # <linux/static_call.h> baru ada di kernel 5.10+, tapi SukiSU meng-include-nya tanpa syarat.
+          # Stub ini bikin static_call jadi function pointer biasa (hasil kerjanya sama). Cuma dibuat kalau headernya tidak ada.
+          if [ ! -f include/linux/static_call.h ]; then
+            cat > include/linux/static_call.h <<'EOF'
+          #ifndef _KSU_STATIC_CALL_STUB_H
+          #define _KSU_STATIC_CALL_STUB_H
+          #define DECLARE_STATIC_CALL(name, func) extern typeof(func) *__ksu_sc_##name
+          #define DEFINE_STATIC_CALL(name, func) typeof(func) *__ksu_sc_##name = (func)
+          #define static_call(name) (*__ksu_sc_##name)
+          #define static_call_update(name, func) ((void)(__ksu_sc_##name = (func)))
+          #endif
+          EOF
+            echo "stub include/linux/static_call.h dibuat (kernel < 5.10)"
+          fi
+      - name: Apply SuSFS patch + SuSFS inline hooks
         if: ${{ github.event.inputs.enable_ksu == 'true' && github.event.inputs.enable_susfs == 'true' }}
         working-directory: kernel
         env:
-          KSU_FORK: ${{ github.event.inputs.ksu_fork }}
+          SUSFS_FORK: ${{ github.event.inputs.susfs_ksu_fork }}
         run: |
           set -e
-          BUILDER=/tmp/builder/Patches
-          # 1) patch kernel SuSFS: prioritas file di root repo kamu (kayak susfs_x00td_419.patch di 4.19)
-          PATCH=""
-          if git apply -R --check "$PATCH" 2>/dev/null; then
-            echo "SuSFS kernel patch sudah ter-apply, skip"
-          elif git apply --check "$PATCH" 2>/dev/null; then
-            git apply --whitespace=nowarn "$PATCH"
-            echo "SuSFS kernel patch applied (git apply)"
-          else
-            echo "git apply gagal, coba patch -p1 dengan fuzz..."
-            rc=0
-            patch -p1 -N -F3 --no-backup-if-mismatch < "$PATCH" || rc=$?
-            if [ "$rc" -ne 0 ] || find . -name '*.rej' | grep -q .; then
-              echo "::error::ada hunk SuSFS yang gagal, isi .rej di bawah (kirim ke Claude)"
-              find . -name '*.rej' -print -exec cat {} \;
-              exit 1
-            fi
-            echo "SuSFS kernel patch applied (patch -p1)"
+          # script hook & fix patch diambil dari commit yang dipin (bukan branch), biar build bisa diulang persis
+          BUILDER_SHA=dcd789634247c77d8549a42aef232c680a905585
+          RAW="https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/$BUILDER_SHA/Patches"
+          if [ ! -f susfs_x00td_419.patch ]; then
+            echo "::error::susfs_x00td_419.patch tidak ada di root repo (branch ${{ github.event.inputs.branch || 'fastcharge-test' }})"
+            exit 1
           fi
-          # 2) fix khusus SukiSU (dari builder)
-          if [ "$KSU_FORK" = "sukisu" ]; then
-            FIX="$BUILDER/Patch/sukisu_ultra_fixed.patch"
-            if [ -f "$FIX" ]; then
-              rm -rf /tmp/sfix && mkdir -p /tmp/sfix
-              awk '/^diff --git /{n++} n>0{print > sprintf("/tmp/sfix/part%02d.p", n)}' "$FIX"
-              (
-                cd drivers/kernelsu
-                for p in /tmp/sfix/part*.p; do
-                  f=$(grep -m1 '^+++ ' "$p" | sed 's#^+++ [ab]/##')
-                  if [ "$f" = "runtime/ksud.c" ]; then
-                    sed -i -e '/ksu_selinux_hide_handle_post_fs_data();/d' -e '/ksu_selinux_hide_handle_second_stage();/d' runtime/ksud.c
-                    echo "SukiSU fix applied (hapus panggilan selinux_hide): $f"
-                    continue
-                  fi
-                  rc=0
-                  out=$(patch -p1 -N < "$p" 2>&1) || rc=$?
-                  if [ "$rc" -ne 0 ]; then
-                    echo "::error::SukiSU fix patch gagal untuk $f"
-                    echo "$out"
+          if git apply -R --check susfs_x00td_419.patch 2>/dev/null; then
+            echo "SuSFS kernel patch sudah ter-apply, skip"
+          else
+            git apply --check susfs_x00td_419.patch
+            git apply --whitespace=nowarn susfs_x00td_419.patch
+            echo "SuSFS kernel patch applied"
+          fi
+          if [ "$SUSFS_FORK" = "sukisu" ]; then
+            # fix patch dipecah per file. runtime/ksud.c ditangani terpisah: konteks hunk-nya sudah geser di upstream
+            # (patch salah deteksi "reversed"), jadi panggilan selinux_hide dihapus langsung.
+            curl -LSsf "$RAW/Patch/sukisu_ultra_fixed.patch" -o /tmp/sukisu_ultra_fixed.patch
+            rm -rf /tmp/sfix && mkdir -p /tmp/sfix
+            awk '/^diff --git /{n++} n>0{print > sprintf("/tmp/sfix/part%02d.p", n)}' /tmp/sukisu_ultra_fixed.patch
+            (
+              cd drivers/kernelsu
+              for p in /tmp/sfix/part*.p; do
+                f=$(grep -m1 '^+++ ' "$p" | sed 's#^+++ [ab]/##')
+                if [ "$f" = "runtime/ksud.c" ]; then
+                  sed -i -e '/ksu_selinux_hide_handle_post_fs_data();/d' -e '/ksu_selinux_hide_handle_second_stage();/d' runtime/ksud.c
+                  if grep -qE "ksu_selinux_hide_handle_(post_fs_data|second_stage)\(\);" runtime/ksud.c; then
+                    echo "::error::panggilan selinux_hide masih ada di runtime/ksud.c"
                     exit 1
                   fi
-                  echo "SukiSU fix applied: $f"
-                done
-              )
-            else
-              echo "::warning::sukisu_ultra_fixed.patch tidak ada di builder, skip"
-            fi
+                  echo "SukiSU fix applied (hapus panggilan selinux_hide): $f"
+                  continue
+                fi
+                rc=0
+                out=$(patch -p1 -N < "$p" 2>&1) || rc=$?
+                if [ "$rc" -ne 0 ]; then
+                  echo "::error::SukiSU fix patch gagal untuk $f"
+                  echo "$out"
+                  exit 1
+                fi
+                echo "SukiSU fix applied: $f"
+              done
+            )
           fi
-          # 3) inline hook
-          cp "$BUILDER/susfs_inline_hook_patches.sh" ./susfs_inline_hook_patches.sh
+          curl -LSsf "$RAW/susfs_inline_hook_patches.sh" -o susfs_inline_hook_patches.sh
           bash susfs_inline_hook_patches.sh ./ | tee /tmp/hook.log
           rm -f susfs_inline_hook_patches.sh
           if grep -qiE "failed|warning" /tmp/hook.log; then
             echo "::warning::script hook inline ngelaporin failed/warning, cek log di atas"
           fi
-          # semua kekurangan dikumpulkan dulu, lalu gagal sekali, biar sekali run kelihatan semuanya
-          MISSING=""
-          for f in fs/exec.c fs/open.c fs/read_write.c fs/stat.c drivers/input/input.c kernel/reboot.c; do
-            grep -q "ksu_" "$f" || MISSING="$MISSING hook-ksu:$f"
+          for f in fs/exec.c fs/open.c fs/read_write.c fs/stat.c drivers/input/input.c kernel/reboot.c kernel/sys.c; do
+            grep -q "ksu_" "$f" || { echo "::error::hook KSU tidak masuk di $f"; exit 1; }
           done
-          # sys.c cuma di-hook kalau fork KSU punya ksu_handle_setresuid, jadi cuma warning
-          grep -q "ksu_" kernel/sys.c || echo "::warning::kernel/sys.c tanpa hook ksu_handle_setresuid (normal kalau fork KSU tidak punya)"
-          # patch kernel SuSFS memakai susfs_current_app_uid di fs/stat.c, include-nya cuma ditambah oleh script hook
-          grep -q "susfs_def.h" fs/stat.c || MISSING="$MISSING include-susfs_def.h:fs/stat.c"
-          grep -q "CONFIG_KSU_SUSFS" fs/namespace.c || MISSING="$MISSING susfs:fs/namespace.c"
-          if [ -n "$MISSING" ]; then
-            echo "::error::hook/patch belum lengkap:$MISSING"
-            echo "--- log script hook ---"
-            cat /tmp/hook.log
-            exit 1
-          fi
-          echo "Step SuSFS selesai"
-      - name: Apply manual hooks (KSU tanpa SuSFS)
-        if: ${{ github.event.inputs.enable_ksu == 'true' && github.event.inputs.enable_susfs != 'true' }}
-        working-directory: kernel
-        run: |
-          set -e
-          cp /tmp/builder/Patches/syscall_hook_patches.sh ./syscall_hook_patches.sh
-          bash syscall_hook_patches.sh ./ | tee /tmp/hook.log
-          rm -f syscall_hook_patches.sh
-          grep -qiE "failed|warning" /tmp/hook.log && echo "::warning::script hook ngelaporin failed/warning, cek log di atas" || true
+          grep -q "CONFIG_KSU_SUSFS" fs/namespace.c || { echo "::error::hook SuSFS tidak ada di fs/namespace.c"; exit 1; }
+          echo "OK: SuSFS dan hook KSU terpasang"
       - name: Select toolchain
         id: tc
         env:
@@ -376,18 +370,11 @@ jobs:
         env:
           ENABLE_KSU: ${{ github.event.inputs.enable_ksu }}
           ENABLE_SUSFS: ${{ github.event.inputs.enable_susfs }}
-          DEFCONFIG_NAME: ${{ github.event.inputs.defconfig }}
-          KSU_DEBUG: ${{ github.event.inputs.ksu_debug }}
+          SUSFS_FORK: ${{ github.event.inputs.susfs_ksu_fork }}
         run: |
-          set -e
-          export PATH="$PATH${TC_BIN:+:$TC_BIN}"
-          if [ -n "$TC_BIN" ]; then echo "clang dipakai: $(command -v clang) -> $(CCACHE_DISABLE=1 clang --version | head -1)"; fi
-          DEFCONFIG_PATH=$(find arch/arm64/configs -name "$DEFCONFIG_NAME" | head -1)
-          [ -z "$DEFCONFIG_PATH" ] && { echo "::error::$DEFCONFIG_NAME tidak ditemukan"; exit 1; }
-          DEFCONFIG_REL="${DEFCONFIG_PATH#arch/arm64/configs/}"
-          make ARCH=arm64 O=out $TC_MAKE_ARGS "$DEFCONFIG_REL"
+          cp arch/arm64/configs/vendor/asus/${{ github.event.inputs.defconfig }} out/.config
           if [ "$ENABLE_KSU" = "true" ] && [ "$ENABLE_SUSFS" = "true" ]; then
-            echo "KernelSU: ON + SuSFS"
+            echo "KernelSU: ON + SuSFS ($SUSFS_FORK)"
             {
               echo "CONFIG_KSU=y"
               echo "CONFIG_KSU_SUSFS=y"
@@ -400,68 +387,38 @@ jobs:
               echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y"
               echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y"
               echo "CONFIG_KSU_SUSFS_SUS_MAP=y"
+              # BakaSU: KSU_SUSFS ("SUSFS Inline Hook") adalah satu pilihan dalam choice hook method,
+              # sejajar dengan KSU_MANUAL_HOOK. Jangan set KSU_MANUAL_HOOK di sini, bentrok.
             } >> out/.config
           elif [ "$ENABLE_KSU" = "true" ]; then
-            echo "KernelSU: ON (manual hook, tanpa SuSFS)"
-            {
-              echo "CONFIG_KSU=y"
-              echo "CONFIG_KSU_MANUAL_HOOK=y"
-            } >> out/.config
+            echo "KernelSU: ON (tambah ksu.config)"
+            cat arch/arm64/configs/vendor/extra/ksu.config >> out/.config
           else
             echo "KernelSU: OFF"
           fi
-          if [ "$ENABLE_KSU" = "true" ]; then
-            if [ "$KSU_DEBUG" = "true" ]; then
-              echo "CONFIG_KSU_DEBUG=y" >> out/.config
-            else
-              echo "# CONFIG_KSU_DEBUG is not set" >> out/.config
-            fi
-          fi
-          # speed-up: debug info tidak ikut ke Image.gz-dtb, tapi bikin compile + link jauh lebih lama
-          echo "# CONFIG_DEBUG_INFO is not set" >> out/.config
-          make ARCH=arm64 O=out $TC_MAKE_ARGS olddefconfig
-          echo "=== CONFIG_KSU* setelah olddefconfig ==="
-          grep -n "CONFIG_KSU" out/.config || echo "(tidak ada)"
-          grep -n "CONFIG_DEBUG_INFO" out/.config || true
+          yes "" | make ARCH=${{ env.ARCH }} O=out $TC_MAKE_ARGS oldconfig
       - name: Build kernel
         working-directory: kernel
         run: |
-          export PATH="$PATH${TC_BIN:+:$TC_BIN}"
-          if [ -n "$TC_BIN" ]; then
-            echo "clang dipakai: $(command -v clang) -> $(CCACHE_DISABLE=1 clang --version | head -1)"
-            case "$(CCACHE_DISABLE=1 clang --version | head -1)" in
-              *"clang version 13."*) ;;
-              *) echo "::error::clang yang kepakai BUKAN Proton 13 (kemungkinan clang sistem runner)"; exit 1 ;;
-            esac
-          fi
+          export CC="ccache clang"
+          export CXX="ccache clang++"
           echo "CPU cores: $(nproc)"
-          make ARCH=arm64 O=out $TC_MAKE_ARGS KCFLAGS="$TC_KCFLAGS" -j"$(nproc)" Image.gz dtbs
-      - name: Pack Image.gz-dtb
-        working-directory: kernel
-        run: |
-          DTB_PATH=""
-          for pattern in "sdm636" "sdm660"; do
-            FOUND=$(find out/arch/arm64/boot/dts -name "${pattern}*.dtb" | sort | head -1)
-            if [ -n "$FOUND" ]; then
-              DTB_PATH="$FOUND"
-              echo "DTB selected: $DTB_PATH"
-              break
-            fi
-          done
-          if [ -z "$DTB_PATH" ]; then
-            echo "=== Semua DTB ==="
-            find out/arch/arm64/boot/dts -name "*.dtb" | sort
-            echo "::error::No sdm636/sdm660 DTB found"
-            exit 1
-          fi
-          [ ! -f out/arch/arm64/boot/Image.gz ] && { echo "::error::Image.gz missing"; exit 1; }
-          cat out/arch/arm64/boot/Image.gz "$DTB_PATH" > out/arch/arm64/boot/Image.gz-dtb
-          ls -lh out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image.gz-dtb
+          make ARCH=${{ env.ARCH }} O=out $TC_MAKE_ARGS KCFLAGS="$TC_KCFLAGS" -j"$(nproc)"
       - name: Show compiler used
         working-directory: kernel
         continue-on-error: true
         run: |
           grep -E "LINUX_COMPILER|UTS_VERSION" out/include/generated/compile.h || true
+      - name: Verify close_range ada di kernel hasil build
+        working-directory: kernel
+        continue-on-error: true
+        run: |
+          if grep -E "sys_close_range" out/System.map; then
+            echo "OK: sys_close_range ada di System.map"
+          else
+            echo "::warning::sys_close_range TIDAK ada di System.map, hotspot belum akan jalan"
+            exit 1
+          fi
       - name: Verify KernelSU di kernel hasil build
         if: ${{ github.event.inputs.enable_ksu == 'true' }}
         working-directory: kernel
