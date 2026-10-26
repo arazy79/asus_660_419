@@ -165,18 +165,6 @@ jobs:
           BUILDER=/tmp/builder/Patches
           # 1) patch kernel SuSFS: prioritas file di root repo kamu (kayak susfs_x00td_419.patch di 4.19)
           PATCH=""
-          if [ -f susfs_x00td_44.patch ]; then
-            PATCH="$PWD/susfs_x00td_44.patch"
-            echo "Pakai patch dari root repo: susfs_x00td_44.patch"
-          elif [ -f "$BUILDER/Patch/susfs_patch_to_4.4.patch" ]; then
-            PATCH="$BUILDER/Patch/susfs_patch_to_4.4.patch"
-            echo "Pakai patch dari builder: Patches/Patch/susfs_patch_to_4.4.patch"
-          fi
-          if [ -z "$PATCH" ]; then
-            echo "::error::susfs_patch_to_4.4.patch tidak ada di builder_ref ini. Isi Patches/Patch:"
-            ls -la "$BUILDER/Patch" || true
-            exit 1
-          fi
           if git apply -R --check "$PATCH" 2>/dev/null; then
             echo "SuSFS kernel patch sudah ter-apply, skip"
           elif git apply --check "$PATCH" 2>/dev/null; then
