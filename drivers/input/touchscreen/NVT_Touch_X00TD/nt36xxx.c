@@ -1130,6 +1130,9 @@ void nvt_ts_wakeup_gesture_report(uint8_t gesture_id)
 	}
 
 	if (keycode > 0) {
+		/* FIX 1: Ambil wake_lock di sini pas beneran ada gesture valid */
+		__pm_wakeup_event(gesture_wakelock, msecs_to_jiffies(5000));
+
 		input_report_key(ts->input_dev, keycode, 1);
 		input_sync(ts->input_dev);
 		input_report_key(ts->input_dev, keycode, 0);
@@ -1322,8 +1325,6 @@ static void nvt_ts_work_func(struct work_struct *work)
 // Huaqin add for esd check function. by zhengwu.lu. at 2018/2/28  end
 			input_x = (uint32_t)(point_data[position + 1] << 4) + (uint32_t) (point_data[position + 3] >> 4);
 			input_y = (uint32_t)(point_data[position + 2] << 4) + (uint32_t) (point_data[position + 3] & 0x0F);
-			if ((input_x < 0) || (input_y < 0))
-				continue;
 			if ((input_x > ts->abs_x_max) || (input_y > ts->abs_y_max))
 				continue;
 			input_w = (uint32_t)(point_data[position + 4]);
@@ -1421,11 +1422,9 @@ static irqreturn_t nvt_ts_irq_handler(int32_t irq, void *dev_id)
 	}
 // Huaqin add for ctp lose efficacy by zhengwu.lu. at 2018/04/18 For Platform end
 
-#if WAKEUP_GESTURE
-	if (bTouchIsAwake == 0) {
-		__pm_wakeup_event(gesture_wakelock, msecs_to_jiffies(5000));
-	}
-#endif
+// Huaqin add for ctp lose efficacy by zhengwu.lu. at 2018/04/18 For Platform start
+	//FIX 1: wake_lock dihapus dari sini biar ga kena spam IRQ
+// Huaqin add for ctp lose efficacy by zhengwu.lu. at 2018/04/18 For Platform end
 
 	queue_work(nvt_wq, &ts->nvt_work);
 
@@ -2129,6 +2128,9 @@ static void __exit nvt_driver_exit(void)
 
 #if WAKEUP_GESTURE
     destroy_gesture_control();
+    if (gesture_wakelock) {
+        wakeup_source_unregister(gesture_wakelock); /* CLEANUP: Hindari memory leak */
+    }
 #endif
 
 	i2c_del_driver(&nvt_i2c_driver);
