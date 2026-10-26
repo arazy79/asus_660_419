@@ -155,48 +155,6 @@ jobs:
             echo "::error::drivers/kernelsu/Kconfig tidak ada, setup KernelSU gagal"
             exit 1
           fi
-      - name: KernelSU compat fixes for kernel 4.4
-        if: ${{ github.event.inputs.enable_ksu == 'true' }}
-        working-directory: kernel
-        run: |
-          # semua sed di sini aman kalau pola tidak ketemu (no-op).
-          # Kalau compile masih error di file KSU, kirim log errornya, tambah fix di sini.
-          KFILES=$(find -L drivers/kernelsu -type f \( -name '*.c' -o -name '*.h' \))
-          # C99/C11 syntax di kernel 4.4 yang default gnu89
-          for mk in drivers/kernelsu/Kbuild drivers/kernelsu/Makefile; do
-            if [ -f "$mk" ] && ! grep -q 'std=gnu11' "$mk"; then
-              echo 'ccflags-y += -std=gnu11' >> "$mk"
-              echo "gnu11 ditambah ke $mk"
-              break
-            fi
-          done
-          # MODULE_IMPORT_NS (kernel < 5.4)
-          sed -i --follow-symlinks '/MODULE_IMPORT_NS/d' $KFILES
-          # compiler_types.h (kernel < 4.15)
-          sed -i --follow-symlinks 's|#include <linux/compiler_types.h>|#include <linux/compiler.h>|' $KFILES
-          # task_stack.h (kernel < 4.11)
-          sed -i --follow-symlinks '/#include <linux\/sched\/task_stack.h>/d' $KFILES
-          # full_name_hash 2 argumen (kernel < 4.17)
-          sed -i --follow-symlinks 's/full_name_hash(NULL, dirpath, strlen(dirpath))/full_name_hash((const unsigned char *)dirpath, strlen(dirpath))/' $KFILES
-          # group_info pakai blocks[] di 4.4
-          sed -i --follow-symlinks 's/group_info->gid\[i\]/group_info->blocks[i]/' $KFILES
-          # security_add_hooks 2 argumen di 4.4
-          sed -i --follow-symlinks 's/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu")/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks))/' $KFILES
-          # <linux/static_call.h> baru ada di kernel 5.10+, tapi SukiSU meng-include-nya tanpa syarat.
-          # Stub ini bikin static_call jadi function pointer biasa (hasil kerjanya sama). Cuma dibuat kalau headernya tidak ada.
-          if [ ! -f include/linux/static_call.h ]; then
-            cat > include/linux/static_call.h <<'EOF'
-          #ifndef _KSU_STATIC_CALL_STUB_H
-          #define _KSU_STATIC_CALL_STUB_H
-          #define DECLARE_STATIC_CALL(name, func) extern typeof(func) *__ksu_sc_##name
-          #define DEFINE_STATIC_CALL(name, func) typeof(func) *__ksu_sc_##name = (func)
-          #define static_call(name) (*__ksu_sc_##name)
-          #define static_call_update(name, func) ((void)(__ksu_sc_##name = (func)))
-          #endif
-          EOF
-            echo "stub include/linux/static_call.h dibuat (kernel < 5.10)"
-          fi
-          echo "compat fixes selesai"
       - name: Apply SuSFS kernel patch + inline hooks
         if: ${{ github.event.inputs.enable_ksu == 'true' && github.event.inputs.enable_susfs == 'true' }}
         working-directory: kernel
