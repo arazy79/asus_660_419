@@ -467,7 +467,7 @@
 			interrupt-names = "hap-sc-irq", "hap-play-irq";
 			qcom,actuator-type = "lra";
 			qcom,vmax-mv = <2100>;
-			qcom,play-rate-us = <2000>;
+			qcom,play-rate-us = <1200>;
 			qcom,lra-resonance-sig-shape = "sine";
 			qcom,lra-auto-resonance-mode = "qwd";
 			qcom,lra-allow-variable-play-rate;
@@ -475,7 +475,7 @@
 			wf_0 {
 				/* CLICK */
 				qcom,effect-id = <0>;
-				qcom,wf-vmax-mv = <800>;
+				qcom,wf-vmax-mv = <1200>;
 				qcom,wf-pattern = [3e 3e 3e];
 				qcom,wf-play-rate-us = <900>;
 				qcom,wf-brake-pattern = [01 00 00 00];
@@ -484,7 +484,7 @@
 			wf_1 {
 				/* DOUBLE CLICK */
 				qcom,effect-id = <1>;
-				qcom,wf-vmax-mv = <850>;
+				qcom,wf-vmax-mv = <1200>;
 				qcom,wf-pattern = [7e 7e 02 02 02 02 02 02];
 				qcom,wf-play-rate-us = <1000>;
 				qcom,wf-repeat-count = <2>;
@@ -494,7 +494,7 @@
 			wf_2 {
 				/* TICK */
 				qcom,effect-id = <2>;
-				qcom,wf-vmax-mv = <900>;
+				qcom,wf-vmax-mv = <1200>;
 				qcom,wf-pattern = [7e 7e];
 				qcom,wf-play-rate-us = <1200>;
 				qcom,lra-auto-resonance-disable;
@@ -502,7 +502,7 @@
 			wf_3 {
 				/* THUD */
 				qcom,effect-id = <3>;
-				qcom,wf-vmax-mv = <950>;
+				qcom,wf-vmax-mv = <1200>;
 				qcom,wf-pattern = [7e 7e 7e];
 				qcom,wf-play-rate-us = <1300>;
 				qcom,lra-auto-resonance-disable;
@@ -510,17 +510,17 @@
 			wf_4 {
 				/* POP */
 				qcom,effect-id = <4>;
-				qcom,wf-vmax-mv = <1000>;
+				qcom,wf-vmax-mv = <1200>;
 				qcom,wf-pattern = [7e 7e];
-				qcom,wf-play-rate-us = <1500>;
+				qcom,wf-play-rate-us = <1400>;
 				qcom,lra-auto-resonance-disable;
 			};
 			wf_5 {
 				/* HEAVY CLICK */
 				qcom,effect-id = <5>;
-				qcom,wf-vmax-mv = <1100>;
+				qcom,wf-vmax-mv = <1200>;
 				qcom,wf-pattern = [7e 7e 7e];
-				qcom,wf-play-rate-us = <2000>;
+				qcom,wf-play-rate-us = <1500>;
 				qcom,wf-brake-pattern = [03 00 00 00];
 				qcom,lra-auto-resonance-disable;
 			};
