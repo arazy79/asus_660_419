@@ -1,0 +1,34 @@
+name: Upstream Merge ke 4.19.325
+on:
+  workflow_dispatch:  # Jalankan manual
+
+jobs:
+  merge-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch saat ini
+        uses: actions/checkout@v4
+        with:
+          ref: '16'  # ← BRANCH ASAL KAMU
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Buat branch baru
+        run: |
+          git checkout -b upstream-4.19.325
+
+      - name: Tambah remote upstream kernel
+        run: |
+          git remote add linux-stable https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+          git fetch linux-stable linux-4.19.y
+
+      - name: Merge ke 4.19.325
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git merge linux-stable/linux-4.19.y --no-edit || true
+          echo "=== Merge selesai ==="
+
+      - name: Push branch baru
+        run: |
+          git push -u origin upstream-4.19.325
