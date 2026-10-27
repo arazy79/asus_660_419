@@ -125,8 +125,8 @@
 		qcom,start-delay = <5>;
 		zone@0 {
 			reg = <0>;
-			qcom,silver-khz = <1843200>;
-			qcom,gold-khz = <1958400>;
+			qcom,silver-khz = <2016000>;
+			qcom,gold-khz = <2303000>;
 			qcom,trip-deg = <53000>;
 		};
 
@@ -220,7 +220,7 @@
 
 		trips {
 			pm660_ibat_high: ibat-high {
-				temperature = <4200>;
+				temperature = <4800>;
 				hysteresis = <200>;
 				type = "passive";
 			};
@@ -267,7 +267,7 @@
 
 		trips {
 			pm660_vbat_adc: vbat-adc {
-				temperature = <3500>;
+				temperature = <3300>;
 				hysteresis = <100>;
 				type = "passive";
 			};
@@ -645,7 +645,7 @@
 	};
 
 	gpu-step {
-		polling-delay-passive = <10>;
+		polling-delay-passive = <1000>;
 		polling-delay = <0>;
 		thermal-governor = "step_wise";
 		thermal-sensors = <&tsens 8>;
@@ -677,13 +677,13 @@
 		trips {
 			gold_trip: gold-trip {
 				temperature = <50000>;
-				hysteresis = <0>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 
 			silver_trip: silver-trip {
 				temperature = <53000>;
-				hysteresis = <0>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 		};
@@ -923,7 +923,7 @@
 
 		trips {
 			pm660_low_soc: low-soc {
-				temperature = <10>;
+				temperature = <5>;
 				hysteresis = <0>;
 				type = "passive";
 			};
