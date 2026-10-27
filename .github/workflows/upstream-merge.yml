@@ -1,21 +1,22 @@
 name: Upstream Merge ke 4.19.325
 on:
-  workflow_dispatch:  # Jalankan manual
+  workflow_dispatch:
 
 jobs:
   merge-upstream:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch saat ini
+      - name: Checkout branch 16
         uses: actions/checkout@v4
         with:
-          ref: '16'  # ← BRANCH ASAL KAMU
+          ref: '16'
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Buat branch baru
+      - name: Buat & pindah ke branch baru
         run: |
           git checkout -b upstream-4.19.325
+          echo "✅ Branch dibuat: upstream-4.19.325"
 
       - name: Tambah remote upstream kernel
         run: |
@@ -29,6 +30,7 @@ jobs:
           git merge linux-stable/linux-4.19.y --no-edit || true
           echo "=== Merge selesai ==="
 
-      - name: Push branch baru
+      - name: Push branch baru ke GitHub
         run: |
           git push -u origin upstream-4.19.325
+          echo "✅ Branch sudah di-push ke repo"
