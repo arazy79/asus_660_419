@@ -47,7 +47,7 @@
 			device_type = "cpu";
 			compatible = "qcom,kryo260";
 			reg = <0x0 0x0>;
-			clock-frequency = <2154000000>;
+			clock-frequency = <2016000000>;
 			enable-method = "psci";
 			efficiency = <636>;
 			capacity-dmips-mhz = <636>;
@@ -74,7 +74,7 @@
 			device_type = "cpu";
 			compatible = "qcom,kryo260";
 			reg = <0x0 0x1>;
-			clock-frequency = <2154000000>;
+			clock-frequency = <2016000000>;
 			enable-method = "psci";
 			efficiency = <636>;
 			capacity-dmips-mhz = <636>;
@@ -93,7 +93,7 @@
 			device_type = "cpu";
 			compatible = "qcom,kryo260";
 			reg = <0x0 0x2>;
-			clock-frequency = <2154000000>;
+			clock-frequency = <2016000000>;
 			enable-method = "psci";
 			efficiency = <636>;
 			capacity-dmips-mhz = <636>;
@@ -112,7 +112,7 @@
 			device_type = "cpu";
 			compatible = "qcom,kryo260";
 			reg = <0x0 0x3>;
-			clock-frequency = <2154000000>;
+			clock-frequency = <2016000000>;
 			enable-method = "psci";
 			efficiency = <636>;
 			capacity-dmips-mhz = <636>;
@@ -131,7 +131,7 @@
 			device_type = "cpu";
 			compatible = "qcom,kryo260";
 			reg = <0x0 0x100>;
-			clock-frequency = <2457600000>;
+			clock-frequency = <2304000000>;
 			enable-method = "psci";
 			efficiency = <1024>;
 			capacity-dmips-mhz = <1024>;
@@ -154,7 +154,7 @@
 			device_type = "cpu";
 			compatible = "qcom,kryo260";
 			reg = <0x0 0x101>;
-			clock-frequency = <2457600000>;
+			clock-frequency = <2304000000>;
 			enable-method = "psci";
 			efficiency = <1024>;
 			capacity-dmips-mhz = <1024>;
@@ -173,7 +173,7 @@
 			device_type = "cpu";
 			compatible = "qcom,kryo260";
 			reg = <0x0 0x102>;
-			clock-frequency = <2457600000>;
+			clock-frequency = <2304000000>;
 			enable-method = "psci";
 			efficiency = <1024>;
 			capacity-dmips-mhz = <1024>;
@@ -192,7 +192,7 @@
 			device_type = "cpu";
 			compatible = "qcom,kryo260";
 			reg = <0x0 0x103>;
-			clock-frequency = <2457600000>;
+			clock-frequency = <2304000000>;
 			enable-method = "psci";
 			efficiency = <1024>;
 			capacity-dmips-mhz = <1024>;
@@ -257,7 +257,7 @@
 				1401600	119
 				1536000	146
 				1747200	197
-				2150400	216
+				2016400	216
 			>;
 		};
 
@@ -268,7 +268,7 @@
 				1747200	513
 				1958400	660
 				2150400	808
-				2457600	997
+				2304000	997
 			>;
 		};
 	};
@@ -1023,7 +1023,7 @@
 			<  1401600000 0x04040049 0x073a003a 0x2 5 >,
 			<  1612800000 0x0404005b 0x09480048 0x2 6 >,
 			<  1843200000 0x04040060 0x094c004c 0x3 7 >,
-			<  2000000000 0x04040064 0x09430043 0x3 8 >;
+			<  2016000000 0x04040069 0x09430043 0x3 8 >;
 
 		qcom,pwrcl-speedbin4-v0 =
 			<   300000000 0x0004000f 0x01200020 0x1 1 >,
@@ -1148,15 +1148,15 @@
 			<  2150400000 0x04040070 0x0b590059 0x2 6 >,
 			<  2208000000 0x04040073 0x0b5c005c 0x3 7 >;
 
-		qcom,up-timer = <500 500>;
-		qcom,down-timer = <1000 1000>;
+		qcom,up-timer = <2000 500>;
+		qcom,down-timer = <3000 500>;
 		qcom,set-ret-inactive;
 		qcom,enable-llm-freq-vote;
-		qcom,llm-freq-up-timer = <300000 300000>;
-		qcom,llm-freq-down-timer = <300000 300000>;
+		qcom,llm-freq-up-timer = <250000 250000>;
+		qcom,llm-freq-down-timer = <250000 250000>;
 		qcom,enable-llm-volt-vote;
-		qcom,llm-volt-up-timer = <300000 300000>;
-		qcom,llm-volt-down-timer = <300000 300000>;
+		qcom,llm-volt-up-timer = <250000 250000>;
+		qcom,llm-volt-down-timer = <250000 250000>;
 		qcom,cc-reads = <8>;
 		qcom,cc-delay = <4>;
 		qcom,cc-factor = <90>;
@@ -1201,7 +1201,7 @@
 			< 1401600 >,
 			< 1612800 >,
 			< 1843200 >,
-			< 2000000 >;
+			< 2016000 >;
 
 		qcom,cpufreq-table-4 =
 			<  633600 >,
