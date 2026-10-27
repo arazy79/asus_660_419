@@ -1,6 +1,9 @@
-name: Upstream Merge ke 4.19.325
+name: Upstream Merge 4.19.325
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write  # ← Izinkan push ke repo
 
 jobs:
   merge-upstream:
@@ -11,9 +14,8 @@ jobs:
         with:
           ref: '16'
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Buat & pindah ke branch baru
+      - name: Buat branch baru
         run: |
           git checkout -b upstream-4.19.325
           echo "✅ Branch dibuat: upstream-4.19.325"
@@ -23,14 +25,14 @@ jobs:
           git remote add linux-stable https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
           git fetch linux-stable linux-4.19.y
 
-      - name: Merge ke 4.19.325
+      - name: Merge — Izinkan sejarah tidak berhubungan + Utamakan versi kamu
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge linux-stable/linux-4.19.y --no-edit || true
+          git merge --allow-unrelated-histories -X ours linux-stable/linux-4.19.y --no-edit
           echo "=== Merge selesai ==="
 
-      - name: Push branch baru ke GitHub
+      - name: Push branch baru
         run: |
           git push -u origin upstream-4.19.325
           echo "✅ Branch sudah di-push ke repo"
