@@ -108,12 +108,6 @@
 #include <linux/dvb/dmx.h>
 #include <linux/dvb/frontend.h>
 #include <linux/dvb/video.h>
-
-#define SCSI_IOCTL_GET_IDLUN      0x5382
-#define SCSI_IOCTL_GET_BUS_NUMBER 0x5383
-#define SCSI_IOCTL_PROBE_HOST     0x5384
-#define SCSI_IOCTL_GET_PCI        0x5385
-
 #include <linux/sort.h>
 
 #ifdef CONFIG_SPARC
