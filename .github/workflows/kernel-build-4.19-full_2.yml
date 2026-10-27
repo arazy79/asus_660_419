@@ -1,11 +1,11 @@
-name: Kernel Build X00TD 4.19 skywalker KSUUUUUUUUU 2222
+name: Kernel Build X00TD 4.19 skywalker bakasu
 on:
   workflow_dispatch:
     inputs:
       repo:
         description: 'Repository kernel (format owner/repo, JANGAN full URL). Kosongkan = pakai default arazy79/android-kernel-tes-4.19'
         required: false
-        default: 'arazy79/kernel_419'
+        default: 'arazy79/kernel_4.19'
       branch:
         description: 'Branch / tag / commit yang di-checkout'
         required: true
