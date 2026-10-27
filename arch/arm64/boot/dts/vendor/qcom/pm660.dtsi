@@ -485,7 +485,7 @@
 				/* DOUBLE CLICK */
 				qcom,effect-id = <1>;
 				qcom,wf-vmax-mv = <1200>;
-				qcom,wf-pattern = [7e 7e 02 02 02 02 02 02];
+				qcom,wf-pattern = [7e 7e 02 02];
 				qcom,wf-play-rate-us = <1000>;
 				qcom,wf-repeat-count = <2>;
 				qcom,wf-s-repeat-count = <1>;
