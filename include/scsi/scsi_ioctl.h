@@ -16,6 +16,11 @@
 #define	SCSI_REMOVAL_PREVENT	1
 #define	SCSI_REMOVAL_ALLOW	0
 
+#define SCSI_IOCTL_GET_IDLUN      0x5382
+#define SCSI_IOCTL_GET_BUS_NUMBER 0x5383
+#define SCSI_IOCTL_PROBE_HOST     0x5384
+#define SCSI_IOCTL_GET_PCI        0x5385
+
 #ifdef __KERNEL__
 
 struct scsi_device;
