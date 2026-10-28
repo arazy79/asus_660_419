@@ -607,7 +607,6 @@ CONFIG_CRYPTO_POLY1305_NEON=y
 #
 # Techpack audio options
 #
-# CONFIG_AFE_HWDEP is not set
 CONFIG_AUDIO_EXT_CLK=y
 # CONFIG_DOLBY_DS2 is not set
 # CONFIG_DOLBY_LICENSE is not set
@@ -5541,7 +5540,6 @@ CONFIG_INCREMENTAL_FS=y
 #
 CONFIG_FAT_FS=y
 # CONFIG_MSDOS_FS is not set
-# CONFIG_VFAT_FS is not set
 CONFIG_FAT_DEFAULT_CODEPAGE=437
 CONFIG_FAT_DEFAULT_IOCHARSET="iso8859-1"
 # CONFIG_FAT_DEFAULT_UTF8 is not set
@@ -6235,8 +6233,9 @@ CONFIG_FB_MSM_MDSS_DEFAULT_FRAMERATE=65
 # CONFIG_DEBUG_INFO is not set
 
 # Turnoff printk
-# CONFIG_PRINTK= is not set
+# CONFIG_PRINTK is not set
 
 # = Turnoff debug print auto
 # CONFIG_DYNAMIC_DEBUG= is not set
-# CONFIG_DEBUG_FS= is not set
+# CONFIG_DEBUG_FS is not set
+CONFIG_AFE_HWDEP=y
