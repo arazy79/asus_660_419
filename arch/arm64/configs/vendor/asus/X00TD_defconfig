@@ -6229,12 +6229,4 @@ CONFIG_NET_ACT_POLICE=y
 CONFIG_NET_CLS_MATCHALL=y
 # CONFIG_FAKE_UNAME_5_10 is not set
 CONFIG_FB_MSM_MDSS_DEFAULT_FRAMERATE=65
-# Turnoff info debug di binary
-# CONFIG_DEBUG_INFO is not set
 
-# Turnoff printk
-# CONFIG_PRINTK is not set
-
-# = Turnoff debug print auto
-# CONFIG_DYNAMIC_DEBUG= is not set
-# CONFIG_DEBUG_FS is not set
