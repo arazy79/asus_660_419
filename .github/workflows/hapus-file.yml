@@ -1,0 +1,73 @@
+name: Prune DTS - keep only X00TD-related
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: hanya tampilkan file yang akan dihapus"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete everything not X00TD/sdm636/sdm660/pm660
+        shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          shopt -s nocasematch
+
+          # Allowlist ketat untuk X00TD
+          # - Makefile
+          # - skeleton64.dtsi (base include)
+          # - msm-audio* (dipakai sdm660-audio.dtsi)
+          # - msm-arm-smmu-660 / impl-defs-660 / msm-gdsc-660 / msm-pm660a
+          # - pm660, pm660l, pm660a (PMIC X00TD)
+          # - sdm636*, sdm660* (SoC X00TD = SDM636, sdm660 board files)
+          # - *x00td* (device specifik)
+          KEEP='(makefile|skeleton64\.dtsi|msm-audio|msm-arm-smmu-660|msm-arm-smmu-impl-defs-660|msm-gdsc-660|msm-pm660a|pm660|sdm636|sdm660|x00td)'
+
+          deleted=0
+          kept=0
+
+          while IFS= read -r -d '' f; do
+            base=$(basename "$f")
+            if [[ "$base" =~ $KEEP ]]; then
+              kept=$((kept+1))
+            else
+              echo "DELETE $f"
+              rm -f "$f"
+              deleted=$((deleted+1))
+            fi
+          done < <(find . -type f \( -iname '*.dts' -o -iname '*.dtsi' \) -print0)
+
+          echo "---"
+          echo "Kept   : $kept file"
+          echo "Deleted: $deleted file"
+
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            echo "DRY RUN: tidak di-commit."
+            exit 0
+          fi
+
+          if git diff --quiet; then
+            echo "Tidak ada perubahan."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Prune DTS: keep only X00TD-related (sdm636/sdm660/pm660)"
+          git push
