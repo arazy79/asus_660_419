@@ -1,10 +1,15 @@
-name: Hapus DTS - keep only X00TD-related
+name: Prune DTS - pilih branch
 
 on:
   workflow_dispatch:
     inputs:
+      branches:
+        description: "Nama branch yang mau diproses (pisah koma / newline). KOSONG = semua branch."
+        required: false
+        type: string
+        default: ""
       dry_run:
-        description: "Dry run: hanya tampilkan file yang akan dihapus"
+        description: "Dry run (tidak commit, hanya tampilkan file yang dihapus)"
         required: true
         type: boolean
         default: true
@@ -12,62 +17,99 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: prune-dts-pilih-branch
+  cancel-in-progress: false
+
 jobs:
   prune:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: false
 
-      - name: Delete everything not X00TD/sdm636/sdm660/pm660
+      - name: Fetch all branches
+        run: git fetch --all --prune --no-tags
+
+      - name: Prune DTS
         shell: bash
         env:
           DRY_RUN: ${{ inputs.dry_run }}
+          BRANCHES_INPUT: ${{ inputs.branches }}
         run: |
           set -euo pipefail
           shopt -s nocasematch
 
-          # Allowlist ketat untuk X00TD
-          # - Makefile
-          # - skeleton64.dtsi (base include)
-          # - msm-audio* (dipakai sdm660-audio.dtsi)
-          # - msm-arm-smmu-660 / impl-defs-660 / msm-gdsc-660 / msm-pm660a
-          # - pm660, pm660l, pm660a (PMIC X00TD)
-          # - sdm636*, sdm660* (SoC X00TD = SDM636, sdm660 board files)
-          # - *x00td* (device specifik)
+          # Allowlist ketat: X00TD + dependency minimalnya
           KEEP='(makefile|skeleton64\.dtsi|msm-audio|msm-arm-smmu-660|msm-arm-smmu-impl-defs-660|msm-gdsc-660|msm-pm660a|pm660|sdm636|sdm660|x00td)'
 
-          deleted=0
-          kept=0
-
-          while IFS= read -r -d '' f; do
-            base=$(basename "$f")
-            if [[ "$base" =~ $KEEP ]]; then
-              kept=$((kept+1))
-            else
-              echo "DELETE $f"
-              rm -f "$f"
-              deleted=$((deleted+1))
-            fi
-          done < <(find . -type f \( -iname '*.dts' -o -iname '*.dtsi' \) -print0)
-
-          echo "---"
-          echo "Kept   : $kept file"
-          echo "Deleted: $deleted file"
-
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            echo "DRY RUN: tidak di-commit."
-            exit 0
-          fi
-
-          if git diff --quiet; then
-            echo "Tidak ada perubahan."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Prune DTS: keep only X00TD-related (sdm636/sdm660/pm660)"
-          git push
+
+          # Ambil semua branch remote
+          mapfile -t all_branches < <(
+            git for-each-ref --format='%(refname:short)' refs/remotes/origin \
+              | sed 's#^origin/##' | grep -v '^HEAD$'
+          )
+
+          # Tentukan branch target
+          if [[ -z "${BRANCHES_INPUT//[[:space:]]/}" ]]; then
+            echo "Input branch KOSONG -> proses SEMUA branch."
+            targets=("${all_branches[@]}")
+          else
+            # Pisah pakai koma atau newline, trim spasi
+            mapfile -t targets < <(
+              printf '%s\n' "$BRANCHES_INPUT" \
+                | tr ',' '\n' \
+                | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+                | grep -v '^$'
+            )
+            # Validasi nama branch ada di remote
+            for t in "${targets[@]}"; do
+              if ! printf '%s\n' "${all_branches[@]}" | grep -qx "$t"; then
+                echo "ERROR: branch '$t' tidak ditemukan di remote." >&2
+                exit 1
+              fi
+            done
+          fi
+
+          echo "Branch yang diproses (${#targets[@]}):"
+          printf '  - %s\n' "${targets[@]}"
+          echo
+
+          for br in "${targets[@]}"; do
+            echo "========== BRANCH: $br =========="
+            git checkout -B "$br" "origin/$br"
+
+            deleted=0; kept=0
+            while IFS= read -r -d '' f; do
+              base=$(basename "$f")
+              if [[ "$base" =~ $KEEP ]]; then
+                kept=$((kept+1))
+              else
+                echo "DELETE $f"
+                rm -f "$f"
+                deleted=$((deleted+1))
+              fi
+            done < <(find . -type f \( -iname '*.dts' -o -iname '*.dtsi' \) -print0)
+
+            echo "Kept=$kept Deleted=$deleted"
+
+            if [[ "${DRY_RUN}" == "true" ]]; then
+              echo "DRY RUN: restore, tidak commit."
+              git reset --hard "origin/$br" >/dev/null
+              continue
+            fi
+
+            if git diff --quiet; then
+              echo "no change on $br"
+              continue
+            fi
+
+            git add -A
+            git commit -m "Prune DTS: keep only X00TD-related (sdm636/sdm660/pm660)"
+            git push origin "$br"
+          done
