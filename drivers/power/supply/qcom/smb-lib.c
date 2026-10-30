@@ -2278,8 +2278,7 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 			THERMAL_DAEMON_VOTER, true, 0);
 
 	vote(chg->chg_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
-//	if (chg->system_temp_level == 0)
-		return vote(chg->usb_icl_votable, THERMAL_DAEMON_VOTER, false, 0);
+	vote(chg->usb_icl_votable, THERMAL_DAEMON_VOTER, false, 0);
 
 	vote(chg->fcc_votable, THERMAL_DAEMON_VOTER, true,
 			chg->thermal_mitigation[chg->system_temp_level]);
@@ -3681,8 +3680,8 @@ void smblib_asus_monitor_start(struct smb_charger *chg, int time)
 	cancel_delayed_work(&chg->asus_min_monitor_work);
 	schedule_delayed_work(&chg->asus_min_monitor_work, msecs_to_jiffies(time));
 }
-#define EN_BAT_CHG_EN_COMMAND_TRUE		0
-#define EN_BAT_CHG_EN_COMMAND_FALSE 	BIT(0)
+#define EN_BAT_CHG_EN_COMMAND_TRUE		CHARGING_ENABLE_CMD_BIT
+#define EN_BAT_CHG_EN_COMMAND_FALSE 	0
 #define SMBCHG_FLOAT_VOLTAGE_VALUE_4P004		0x45
 #define SMBCHG_FLOAT_VOLTAGE_VALUE_4P064		0x4D
 #define SMBCHG_FLOAT_VOLTAGE_VALUE_4P350		0x73
@@ -3720,14 +3719,13 @@ static int SW_recharge(struct smb_charger *chg)
 	capacity = asus_get_prop_batt_capacity(smbchg_dev);
 
 	if (capacity <= 98 && termination_done) {
-		//reg=1042    CHARGING_ENABLE_CMD  bit0=1    CHARGING_ENABLE_CMD_IS_ACTIVE
-		rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
+		// polarity ACTIVE HIGH: 0 = disable, 1 = enable
+		rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, 0);
 		if (rc < 0) {
 			CHG_DBG_E("%s: Couldn't write charging_enable\n", __func__);
 			return rc;
 		}
-		//reg=1042    CHARGING_ENABLE_CMD  bit0=0    CHARGING_ENABLE_CMD_IS_INACTIVE
-		rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, 0);
+		rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
 		if (rc < 0) {
 			CHG_DBG_E("%s: Couldn't write charging_enable\n", __func__);
 			return rc;
@@ -4094,11 +4092,11 @@ void asus_insertion_initial_settings(struct smb_charger *chg)
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't set default USBIN_ADAPTER_ALLOW_CFG_REG rc=%d\n", rc);
 	}
-//No.8
-	rc = smblib_write(chg, CHGR_CFG2_REG, 0x40);                        //reg=1051   01000000      bit6=Charge Enable Polarity      1 = Active low (0: enable charging)
-	if (rc < 0) {
-		dev_err(chg->dev, "Couldn't set default CHGR_CFG2_REG rc=%d\n", rc);
-	}
+//No.8 - DISABLED: keep polarity ACTIVE HIGH from smb2_init_hw
+//	rc = smblib_write(chg, CHGR_CFG2_REG, 0x40);
+//	if (rc < 0) {
+//		dev_err(chg->dev, "Couldn't set default CHGR_CFG2_REG rc=%d\n", rc);
+//	}
 //No.9
 	rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG,                   //reg=1042  1 enable    CHARGING_ENABLE_CMD
 			CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
