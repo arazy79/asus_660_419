@@ -41,6 +41,11 @@
 #define MAX_ON_DEMAND_SUPPLY_NAME_LENGTH	64
 #define BUS_DOWN 1
 
+#ifdef CONFIG_SOUND_CONTROL
+extern void msm_dig_cdc_set_ear_active(bool active);
+extern void msm_dig_cdc_set_spk_active(bool active);
+#endif
+
 /*
  * 200 Milliseconds sufficient for DSP bring up in the lpass
  * after Sub System Restart
@@ -2382,10 +2387,16 @@ static int msm_anlg_cdc_codec_enable_spk_pa(struct snd_soc_dapm_widget *w,
 		msm_anlg_cdc_dig_notifier_call(component,
 					       DIG_CDC_EVENT_RX3_MUTE_OFF);
 		snd_soc_component_update_bits(component, w->reg, 0x80, 0x80);
+		#ifdef CONFIG_SOUND_CONTROL
+		msm_dig_cdc_set_spk_active(true);
+		#endif
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		msm_anlg_cdc_dig_notifier_call(component,
 					       DIG_CDC_EVENT_RX3_MUTE_ON);
+		#ifdef CONFIG_SOUND_CONTROL
+		msm_dig_cdc_set_spk_active(false);
+		#endif
 		/*
 		 * Add 1 ms sleep for the mute to take effect
 		 */
@@ -3476,8 +3487,14 @@ static int msm_anlg_cdc_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 		usleep_range(7000, 7100);
 		msm_anlg_cdc_dig_notifier_call(component,
 					DIG_CDC_EVENT_RX1_MUTE_OFF);
+		#ifdef CONFIG_SOUND_CONTROL
+		msm_dig_cdc_set_ear_active(true);
+		#endif
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
+		#ifdef CONFIG_SOUND_CONTROL
+		msm_dig_cdc_set_ear_active(false);
+		#endif
 		msm_anlg_cdc_dig_notifier_call(component,
 				       DIG_CDC_EVENT_RX1_MUTE_ON);
 		/* Wait for 20ms for RX digital mute to take effect */
