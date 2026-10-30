@@ -1270,11 +1270,11 @@ static int smb2_batt_set_prop(struct power_supply *psy,
 		 * charging_enabled=0 -> input_suspend=1 (cut input)
 		 * charging_enabled=1 -> input_suspend=0 (resume input)
 		 */
-		/*{
+		{
 			union power_supply_propval suspend_val = {0};
 			suspend_val.intval = !val->intval;
 			rc = smblib_set_prop_input_suspend(chg, &suspend_val);
-		}*/
+		}
 		break;
 		
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
