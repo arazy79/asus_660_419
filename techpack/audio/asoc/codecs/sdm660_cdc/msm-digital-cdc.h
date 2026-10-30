@@ -91,6 +91,14 @@ struct msm_dig_priv {
 	u32 num_of_supplies;
 	struct regulator_bulk_data *supplies;
 	struct dig_cdc_regulator regulator[MAX_REGULATOR];
+
+#ifdef CONFIG_SOUND_CONTROL
+	int  earpiece_gain_val;
+	int  speaker_gain_val;
+	bool ear_active;
+	bool spk_active;
+#endif
+
 };
 
 struct dig_ctrl_platform_data {
