@@ -4097,18 +4097,18 @@ void asus_insertion_initial_settings(struct smb_charger *chg)
 //	if (rc < 0) {
 //		dev_err(chg->dev, "Couldn't set default CHGR_CFG2_REG rc=%d\n", rc);
 //	}
-//No.9
-	rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG,                   //reg=1042  1 enable    CHARGING_ENABLE_CMD
-			CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
-	if (rc < 0) {
-		dev_err(chg->dev, "Couldn't set default CHARGING_ENABLE_CMD_REG rc=%d\n", rc);
-	}
-//No.10
-	rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG,                 //reg=1042  0    disenable   CHARGING_ENABLE_CMD
-			CHARGING_ENABLE_CMD_BIT, 0);
-	if (rc < 0) {
-		dev_err(chg->dev, "Couldn't set default CHARGING_ENABLE_CMD_REG rc=%d\n", rc);
-	}
+//No.9 - DISABLED to prevent boot charging failure
+//	rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG,                   //reg=1042  1 enable    CHARGING_ENABLE_CMD
+//			CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
+//	if (rc < 0) {
+//		dev_err(chg->dev, "Couldn't set default CHARGING_ENABLE_CMD_REG rc=%d\n", rc);
+//	}
+//No.10 - DISABLED to prevent boot charging failure
+//	rc = smblib_masked_write(chg, CHARGING_ENABLE_CMD_REG,                 //reg=1042  0    disenable   CHARGING_ENABLE_CMD
+//			CHARGING_ENABLE_CMD_BIT, 0);
+//	if (rc < 0) {
+//		dev_err(chg->dev, "Couldn't set default CHARGING_ENABLE_CMD_REG rc=%d\n", rc);
+//	}
 //No.11
 	rc = smblib_masked_write(chg, VSYS_MIN_SEL_CFG_REG,                          //reg=1683       vsy_min=3.6v     Minimum system voltage setting
 			VSYS_MIN_SEL_MASK, 0x02);
