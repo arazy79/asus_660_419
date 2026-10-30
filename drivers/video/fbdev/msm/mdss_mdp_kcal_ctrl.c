@@ -446,7 +446,7 @@ static ssize_t kcal_sat_store(struct device *dev,
 	struct kcal_lut_data *lut_data = dev_get_drvdata(dev);
 
 	r = kstrtoint(buf, 10, &kcal_sat);
-	if ((r) || ((kcal_sat < 224 || kcal_sat > 383) && kcal_sat != 128))
+	if ((r) || ((kcal_sat < 224 || kcal_sat > 383) && kcal_sat != 325))
 		return -EINVAL;
 
 	lut_data->sat = kcal_sat;
