@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 subdir-y += actions
 subdir-y += al
-subdir-y += allwinner
+# subdir-y += allwinner
 subdir-y += altera
 subdir-y += amd
 subdir-y += amlogic
