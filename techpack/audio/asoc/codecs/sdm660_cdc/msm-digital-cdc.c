@@ -1451,10 +1451,10 @@ static struct kobj_attribute speaker_gain_attribute =
 static ssize_t mic_gain_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-		snd_soc_component_read32(sound_control_component_ptr, MSM89XX_CDC_CORE_TX1_VOL_CTL_GAIN),
-		snd_soc_component_read32(sound_control_component_ptr, MSM89XX_CDC_CORE_TX2_VOL_CTL_GAIN)
-	);
+return snprintf(buf, PAGE_SIZE, "%d %d\n",
+    snd_soc_component_read32(sound_control_component_ptr, MSM89XX_CDC_CORE_TX1_VOL_CTL_GAIN),
+    snd_soc_component_read32(sound_control_component_ptr, MSM89XX_CDC_CORE_TX2_VOL_CTL_GAIN)
+);
 }
  static ssize_t mic_gain_store(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
