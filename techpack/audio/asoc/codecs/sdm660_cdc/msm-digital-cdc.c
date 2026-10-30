@@ -1332,27 +1332,121 @@ static struct kobj_attribute headphone_gain_attribute =
 		headphone_gain_show,
 		headphone_gain_store);
 		
+/* Helper: apply gain RX3 sesuai PA yang sedang aktif */
+static void apply_rx3_gain(struct msm_dig_priv *dig_cdc, int which)
+{
+	if (!sound_control_component_ptr || !dig_cdc)
+		return;
+
+	switch (which) {
+	case 1:
+		snd_soc_component_write(sound_control_component_ptr,
+			MSM89XX_CDC_CORE_RX3_VOL_CTL_B2_CTL,
+			dig_cdc->earpiece_gain_val);
+		break;
+	case 2:
+		snd_soc_component_write(sound_control_component_ptr,
+			MSM89XX_CDC_CORE_RX3_VOL_CTL_B2_CTL,
+			dig_cdc->speaker_gain_val);
+		break;
+	}
+}
+
+void msm_dig_cdc_set_ear_active(bool active)
+{
+	struct msm_dig_priv *dig_cdc;
+
+	if (!sound_control_component_ptr)
+		return;
+	dig_cdc = snd_soc_component_get_drvdata(sound_control_component_ptr);
+	if (!dig_cdc)
+		return;
+
+	dig_cdc->ear_active = active;
+	if (active)
+		apply_rx3_gain(dig_cdc, 1);
+	else if (dig_cdc->spk_active)
+		apply_rx3_gain(dig_cdc, 2);
+}
+EXPORT_SYMBOL(msm_dig_cdc_set_ear_active);
+
+void msm_dig_cdc_set_spk_active(bool active)
+{
+	struct msm_dig_priv *dig_cdc;
+
+	if (!sound_control_component_ptr)
+		return;
+	dig_cdc = snd_soc_component_get_drvdata(sound_control_component_ptr);
+	if (!dig_cdc)
+		return;
+
+	dig_cdc->spk_active = active;
+	if (active)
+		apply_rx3_gain(dig_cdc, 2);
+	else if (dig_cdc->ear_active)
+		apply_rx3_gain(dig_cdc, 1);
+}
+EXPORT_SYMBOL(msm_dig_cdc_set_spk_active);
+
 static ssize_t earpiece_gain_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-		snd_soc_component_read32(sound_control_component_ptr, MSM89XX_CDC_CORE_RX3_VOL_CTL_B2_CTL)
-	);
+	struct msm_dig_priv *dig_cdc =
+		snd_soc_component_get_drvdata(sound_control_component_ptr);
+	return snprintf(buf, PAGE_SIZE, "%d\n", dig_cdc->earpiece_gain_val);
 }
- static ssize_t earpiece_gain_store(struct kobject *kobj,
+
+static ssize_t earpiece_gain_store(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
 {
+	struct msm_dig_priv *dig_cdc =
+		snd_soc_component_get_drvdata(sound_control_component_ptr);
 	int input;
- 	sscanf(buf, "%d", &input);
- 	if (input < -10 || input > 20)
+
+	sscanf(buf, "%d", &input);
+	if (input < -10 || input > 20)
 		input = 0;
- 	snd_soc_component_write(sound_control_component_ptr, MSM89XX_CDC_CORE_RX3_VOL_CTL_B2_CTL, input);
- 	return count;
+
+	dig_cdc->earpiece_gain_val = input;
+
+	if (dig_cdc->ear_active)
+		apply_rx3_gain(dig_cdc, 1);
+
+	return count;
 }
- static struct kobj_attribute earpiece_gain_attribute =
-	__ATTR(earpiece_gain, 0664,
-		earpiece_gain_show,
-		earpiece_gain_store);
+
+static struct kobj_attribute earpiece_gain_attribute =
+	__ATTR(earpiece_gain, 0664, earpiece_gain_show, earpiece_gain_store);
+
+static ssize_t speaker_gain_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	struct msm_dig_priv *dig_cdc =
+		snd_soc_component_get_drvdata(sound_control_component_ptr);
+	return snprintf(buf, PAGE_SIZE, "%d\n", dig_cdc->speaker_gain_val);
+}
+
+static ssize_t speaker_gain_store(struct kobject *kobj,
+		struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	struct msm_dig_priv *dig_cdc =
+		snd_soc_component_get_drvdata(sound_control_component_ptr);
+	int input;
+
+	sscanf(buf, "%d", &input);
+	if (input < -10 || input > 20)
+		input = 0;
+
+	dig_cdc->speaker_gain_val = input;
+
+	if (dig_cdc->spk_active)
+		apply_rx3_gain(dig_cdc, 2);
+
+	return count;
+}
+
+static struct kobj_attribute speaker_gain_attribute =
+	__ATTR(speaker_gain, 0664, speaker_gain_show, speaker_gain_store);
 
 static ssize_t mic_gain_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
@@ -1382,6 +1476,7 @@ static struct attribute *sound_control_attrs[] = {
 		&headphone_gain_attribute.attr,
 		&mic_gain_attribute.attr,
 		&earpiece_gain_attribute.attr,
+		&speaker_gain_attribute.attr,
 		NULL,
 };
 
@@ -1401,6 +1496,10 @@ static int msm_dig_cdc_soc_probe(struct snd_soc_component *component)
 
 #ifdef CONFIG_SOUND_CONTROL
 	sound_control_component_ptr = component;
+	msm_dig_cdc->earpiece_gain_val = 4;
+	msm_dig_cdc->speaker_gain_val  = 4;
+	msm_dig_cdc->ear_active        = false;
+	msm_dig_cdc->spk_active        = false;
 #endif
 
 	msm_dig_cdc->component = component;
