@@ -1,9 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX‑License‑Identifier: GPL‑2.0‑only
 /*
- * Auto-cut charging module for X00TD (4.19 final)
- * - INPUT_SUSPEND for real power cut
- * - USB plug-in detection: always resume on connect
- * - Hysteresis: stop at max, resume at min, do nothing in between
+ * Auto‑cut charging module for X00TD (4.19)
+ * Target: pc_port (main USB charger), fallback usb (USB‑PD)
+ * Hysteresis: stop at max_soc, resume at min_soc
  */
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -14,65 +13,76 @@
 static int max_soc = 100;
 static int min_soc = 90;
 module_param(max_soc, int, 0644);
-MODULE_PARM_DESC(max_soc, "Max SOC to stop charging (default 100)");
+MODULE_PARM_DESC(max_soc, "Max SOC to stop charging");
 module_param(min_soc, int, 0644);
-MODULE_PARM_DESC(min_soc, "Min SOC to resume charging (default 90)");
+MODULE_PARM_DESC(min_soc, "Min SOC to resume charging");
 
 static struct delayed_work autocut_work;
 static int last_usb_present = -1;
 
+static void autocut_set_suspend(struct power_supply *chg_psy, int suspend)
+{
+	union power_supply_propval val;
+	int ret;
+	val.intval = suspend;
+
+	if (!chg_psy)
+		return;
+
+	ret = power_supply_set_property(chg_psy, POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
+	if (ret)
+		pr_err("autocut: set suspend=%d failed (err=%d)\n", suspend, ret);
+}
+
 static void autocut_work_fn(struct work_struct *work)
 {
-	struct power_supply *batt_psy, *usb_psy;
+	struct power_supply *batt_psy, *chg_psy;
 	union power_supply_propval val;
-	int ret, capacity, usb_present = 0;
+	int ret, capacity = -1, usb_present = 0;
 
-	/* Check USB present */
-	usb_psy = power_supply_get_by_name("usb");
-	if (usb_psy) {
-		ret = power_supply_get_property(usb_psy, POWER_SUPPLY_PROP_PRESENT, &val);
+	// Prioritize pc_port (main charger), fallback to usb (PD)
+	chg_psy = power_supply_get_by_name("pc_port");
+	if (!chg_psy) {
+		chg_psy = power_supply_get_by_name("usb");
+		if (chg_psy)
+			pr_info("autocut: fallback ke usb (USB‑PD)\n");
+	}
+
+	if (chg_psy) {
+		ret = power_supply_get_property(chg_psy, POWER_SUPPLY_PROP_PRESENT, &val);
 		if (!ret)
 			usb_present = val.intval;
-		power_supply_put(usb_psy);
-	} else {
-		usb_present = last_usb_present > 0 ? 1 : 0;
 	}
 
+	// Battery hanya untuk baca kapasitas
 	batt_psy = power_supply_get_by_name("battery");
-	if (!batt_psy)
-		goto reschedule;
-
-	ret = power_supply_get_property(batt_psy, POWER_SUPPLY_PROP_CAPACITY, &val);
-	if (ret) {
-		power_supply_put(batt_psy);
-		goto reschedule;
+	if (batt_psy) {
+		ret = power_supply_get_property(batt_psy, POWER_SUPPLY_PROP_CAPACITY, &val);
+		if (!ret)
+			capacity = val.intval;
 	}
-	capacity = val.intval;
 
-	/* Charger just plugged in: always allow charging first */
+	// Baru colok charger → paksa nyala ngecas
 	if (usb_present == 1 && last_usb_present != 1) {
-		val.intval = 0;
-		power_supply_set_property(batt_psy, POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
+		autocut_set_suspend(chg_psy, 0);
 		pr_info("autocut: charger plugged, force resume (soc=%d)\n", capacity);
-	}
-	/* Charger connected: apply SOC thresholds only */
-	else if (usb_present == 1) {
+	} else if (usb_present == 1 && capacity >= 0) {
 		if (capacity >= max_soc) {
-			val.intval = 1;
-			power_supply_set_property(batt_psy, POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
-			pr_info("autocut: charging STOPPED at %d%% (max=%d)\n", capacity, max_soc);
+			autocut_set_suspend(chg_psy, 1);
+			pr_info("autocut: STOP at %d%% (max=%d)\n", capacity, max_soc);
 		} else if (capacity <= min_soc) {
-			val.intval = 0;
-			power_supply_set_property(batt_psy, POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
-			pr_info("autocut: charging RESUMED at %d%% (min=%d)\n", capacity, min_soc);
+			autocut_set_suspend(chg_psy, 0);
+			pr_info("autocut: RESUME at %d%% (min=%d)\n", capacity, min_soc);
 		}
-		/* else: between min and max, do nothing (keep current state) */
 	}
 
 	last_usb_present = usb_present;
-	power_supply_put(batt_psy);
 
-reschedule:
+	if (chg_psy)
+		power_supply_put(chg_psy);
+	if (batt_psy)
+		power_supply_put(batt_psy);
+
 	schedule_delayed_work(&autocut_work, msecs_to_jiffies(3000));
 }
 
@@ -80,7 +90,7 @@ static int __init autocut_init(void)
 {
 	INIT_DELAYED_WORK(&autocut_work, autocut_work_fn);
 	schedule_delayed_work(&autocut_work, msecs_to_jiffies(3000));
-	pr_info("autocut: loaded (max_soc=%d, min_soc=%d)\n", max_soc, min_soc);
+	pr_info("autocut: loaded (max=%d, min=%d)\n", max_soc, min_soc);
 	return 0;
 }
 
@@ -94,5 +104,5 @@ module_init(autocut_init);
 module_exit(autocut_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Auto-cut charging with plug-in resume support");
+MODULE_DESCRIPTION("Auto‑cut charging for X00TD (pc_port target)");
 MODULE_AUTHOR("X00TD Porter");
