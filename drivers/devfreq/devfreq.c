@@ -28,6 +28,7 @@
 #include <linux/hrtimer.h>
 #include <linux/of.h>
 #include "governor.h"
+#include <linux/cred.h>
 
 #define MAX(a,b)	((a > b) ? a : b)
 #define MIN(a,b)	((a < b) ? a : b)
@@ -1244,6 +1245,17 @@ static ssize_t min_freq_store(struct device *dev, struct device_attribute *attr,
 	if (ret != 1)
 		return -EINVAL;
 
+	/* GPU: ignore non-root (powerhint) writes to min_freq */
+	if (strstr(dev_name(dev), "kgsl-3d0")) {
+		kuid_t uid = current_uid();
+
+		pr_info_ratelimited("kgsl-dbg: min_freq %lu from %s uid %u\n",
+				    value, current->comm,
+				    from_kuid(&init_user_ns, uid));
+		if (!uid_eq(uid, GLOBAL_ROOT_UID))
+			return count;
+	}
+
 	mutex_lock(&df->event_lock);
 	mutex_lock(&df->lock);
 
@@ -1289,6 +1301,17 @@ static ssize_t max_freq_store(struct device *dev, struct device_attribute *attr,
 	ret = sscanf(buf, "%lu", &value);
 	if (ret != 1)
 		return -EINVAL;
+
+	/* GPU: ignore non-root (powerhint) writes that lower max_freq */
+	if (strstr(dev_name(dev), "kgsl-3d0")) {
+		kuid_t uid = current_uid();
+
+		pr_info_ratelimited("kgsl-dbg: max_freq %lu from %s uid %u\n",
+				    value, current->comm,
+				    from_kuid(&init_user_ns, uid));
+		if (!uid_eq(uid, GLOBAL_ROOT_UID) && value < 850000000UL)
+			return count;
+	}
 
 	mutex_lock(&df->event_lock);
 	mutex_lock(&df->lock);
